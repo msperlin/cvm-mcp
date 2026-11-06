@@ -34,6 +34,8 @@ Important:
   uppercase names for compatibility with the standalone servers.
 - Data is cached locally on first use; the first call for a period downloads
   and parses an archive (seconds to a minute, the CDA months are large).
+- Fund tools route by instrument: FIF/FAPI report daily, FII/FIDC/FIAGRO
+  monthly, FIP quarterly (not yet available).
 - Do not invent numbers: every figure must come from a tool result. Cite
   "CVM/DFP", "CVM/FRE", "CVM/FI" or "CVM" with the reference period.
 """

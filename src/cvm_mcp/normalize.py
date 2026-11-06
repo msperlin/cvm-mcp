@@ -148,11 +148,16 @@ def canonicalize(
     frame.columns = clean_names(frame.columns)
     frame = frame.loc[:, ~frame.columns.duplicated()]
 
+    converted: dict[str, pd.Series] = {}
     for column in frame.columns:
+        values = frame[column]
         if _IDENTIFIER_RE.search(column):
-            frame[column] = frame[column].astype("string").str.strip().replace("", pd.NA)
+            converted[column] = values.astype("string").str.strip().replace("", pd.NA)
         else:
-            frame[column] = _coerce_column(frame[column])
+            converted[column] = _coerce_column(values)
+    # Build once instead of assigning column by column: the wide FIDC tables
+    # (~100 columns) fragment badly and pandas emits a PerformanceWarning.
+    frame = pd.DataFrame(converted, index=frame.index)
 
     ordered = [column for column in key_columns if column in frame.columns]
     ordered += [column for column in frame.columns if column not in ordered]

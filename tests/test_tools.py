@@ -86,3 +86,27 @@ def test_overview_without_registry_returns_an_error(monkeypatch):
     monkeypatch.setattr(tools_companies.store, "registry", explode)
     result = asyncio.run(tools_companies.get_company_overview(9512, 2023))
     assert '"error"' in result
+
+
+def test_fund_family_routing():
+    from cvm_mcp.tools_funds import _fund_family
+
+    assert _fund_family("Classes de Cotas de Fundos FIF") == "fi"
+    assert _fund_family("CLASSE FIF/FAPI") == "fi"
+    assert _fund_family("Classes de Cotas de Fundos FIDC") == "fidc"
+    assert _fund_family("Classes de Cotas de Fundos FII") == "fii"
+    assert _fund_family("Classes de Cotas de Fundos FIIM") == "fii"
+    assert _fund_family("Classes de Cotas de Fundos FIAGRO") == "fiagro"
+    assert _fund_family("Classes de Cotas de Fundos FIP") == "fip"
+    assert _fund_family(None) == "fi"
+
+
+def test_month_helpers():
+    from cvm_mcp.tools_funds import _month_iso, _month_range, _shift_month, _years_of
+
+    assert _shift_month("202501", -1) == "202412"
+    assert _shift_month("202512", 1) == "202601"
+    assert _month_iso("202503") == "2025-03"
+    assert _month_range("202511", "202602") == ["202511", "202512", "202601", "202602"]
+    assert _years_of(["202412", "202501", "202503"]) == ["2024", "2025"]
+

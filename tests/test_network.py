@@ -68,6 +68,62 @@ def test_offerings_volume_for_2024():
     assert "Debêntures" in result
 
 
+def test_fii_nav_and_portfolio():
+    nav = asyncio.run(
+        tools_funds.get_fund_nav(
+            fund="00.332.266/0001-31", first_period="2025-01", last_period="2025-03"
+        )
+    )
+    assert "CVM/FII" in nav
+    assert "patrimonio_liquido" in nav
+    assert "Shoppings" in nav
+
+    portfolio = asyncio.run(
+        tools_funds.get_fund_portfolio(
+            fund="00.332.266/0001-31", period="2025-03", max_rows=50
+        )
+    )
+    assert "CVM/FII" in portfolio
+    assert "component,value" in portfolio
+
+
+def test_fidc_report_and_portfolio():
+    report = asyncio.run(
+        tools_funds.get_fidc_report(
+            fund="05.754.060/0001-13", first_period="2025-07", last_period="2025-09"
+        )
+    )
+    assert "CVM/FIDC" in report
+    assert "inadimplencia_pct" in report
+
+    portfolio = asyncio.run(
+        tools_funds.get_fund_portfolio(
+            fund="05.754.060/0001-13", period="2025-09", max_rows=50
+        )
+    )
+    assert "CVM/FIDC" in portfolio
+
+
+def test_fiagro_nav():
+    result = asyncio.run(
+        tools_funds.get_fund_nav(
+            fund="12.358.507/0001-09", first_period="2025-10", last_period="2025-10"
+        )
+    )
+    assert "CVM/FIAGRO" in result
+    assert "EXITUS" in result
+
+
+def test_fund_family_routing_is_explicit():
+    for query, family in (
+        ("00.332.266/0001-31", "fii"),
+        ("05.754.060/0001-13", "fidc"),
+        ("12.358.507/0001-09", "fiagro"),
+    ):
+        result = asyncio.run(tools_funds.search_fund(query, limit=1))
+        assert f'"family": "{family}"' in result
+
+
 @pytest.mark.parity
 def test_parity_with_standalone_servers():
     """Run the full data-level parity script against the two standalone MCPs."""

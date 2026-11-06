@@ -283,6 +283,13 @@ DATASETS: tuple[Dataset, ...] = (
         url="FI/DOC/CDA/DADOS/cda_fi_{period}.zip",
         tables=(
             Table("pl", "cda_fi_PL_{period}.csv", "Net asset value", ("cnpj_fundo_classe",), "cnpj_fundo_classe"),
+            Table(
+                "fie",
+                "cda_fie_{period}.csv",
+                "Structured-fund portfolio (FII, FIDC, FIAGRO, FIP)",
+                ("cnpj_fundo_classe",),
+                "cnpj_fundo_classe",
+            ),
             *tuple(
                 Table(
                     f"blc_{index}",
@@ -320,6 +327,121 @@ DATASETS: tuple[Dataset, ...] = (
         min_period="",
         refresh_hours=24,
         aliases=("fund_registry", "cadastro_fundos"),
+    ),
+    # -- structured funds --------------------------------------------
+    Dataset(
+        id="fii_inf_mensal",
+        domain="funds",
+        title="CVM/FII — Informe Mensal",
+        description=(
+            "Monthly report of every real-estate fund: net asset value, book value "
+            "per share, unitholders, dividend yield, segment and mandate, plus the "
+            "balance-sheet composition."
+        ),
+        layout=Layout.YEARLY_TABLES,
+        normalizer=Normalizer.GENERIC,
+        url="FII/DOC/INF_MENSAL/DADOS/inf_mensal_fii_{period}.zip",
+        tables=(
+            Table(
+                "geral",
+                "inf_mensal_fii_geral_{period}.csv",
+                "Identity, segment and mandate",
+                ("cnpj_fundo_classe", "data_referencia"),
+                "cnpj_fundo_classe",
+            ),
+            Table(
+                "ativo_passivo",
+                "inf_mensal_fii_ativo_passivo_{period}.csv",
+                "Balance-sheet composition (properties, CRI, FII quotas, cash...)",
+                ("cnpj_fundo_classe", "data_referencia"),
+                "cnpj_fundo_classe",
+            ),
+            Table(
+                "complemento",
+                "inf_mensal_fii_complemento_{period}.csv",
+                "Unitholders, NAV, returns, dividend yield and fees",
+                ("cnpj_fundo_classe", "data_referencia"),
+                "cnpj_fundo_classe",
+            ),
+        ),
+        period="year",
+        min_period="2016",
+        aliases=("fii", "fundos_imobiliarios"),
+    ),
+    Dataset(
+        id="fidc_inf_mensal",
+        domain="funds",
+        title="CVM/FIDC — Informe Mensal",
+        description=(
+            "Monthly credit-fund report: assets, credit portfolio by segment, "
+            "delinquency, net asset value and credit quality (18 tables)."
+        ),
+        layout=Layout.MONTHLY_TABLES,
+        normalizer=Normalizer.GENERIC,
+        url="FIDC/DOC/INF_MENSAL/DADOS/inf_mensal_fidc_{period}.zip",
+        tables=tuple(
+            Table(
+                f"tab_{slug}",
+                f"inf_mensal_fidc_tab_{name}_{{period}}.csv",
+                f"FIDC table {name}",
+                ("cnpj_fundo_classe", "dt_comptc"),
+                "cnpj_fundo_classe",
+            )
+            for slug, name in (
+                ("i", "I"),
+                ("ii", "II"),
+                ("iii", "III"),
+                ("iv", "IV"),
+                ("v", "V"),
+                ("vi", "VI"),
+                ("vii", "VII"),
+                ("viii", "VIII"),
+                ("ix", "IX"),
+                ("x", "X"),
+                ("x_1", "X_1"),
+                ("x_1_1", "X_1_1"),
+                ("x_2", "X_2"),
+                ("x_3", "X_3"),
+                ("x_4", "X_4"),
+                ("x_5", "X_5"),
+                ("x_6", "X_6"),
+                ("x_7", "X_7"),
+            )
+        ),
+        period="month",
+        min_period="2025-01",
+        aliases=("fidc", "direitos_creditorios"),
+    ),
+    Dataset(
+        id="fiagro_inf_mensal",
+        domain="funds",
+        title="CVM/FIAGRO — Informe Mensal",
+        description=(
+            "Monthly report of agribusiness chain funds: net asset value, "
+            "unitholders, returns, fees and asset composition."
+        ),
+        layout=Layout.MONTHLY_TABLES,
+        normalizer=Normalizer.GENERIC,
+        url="FIAGRO/DOC/INF_MENSAL/DADOS/inf_mensal_fiagro_{period}.zip",
+        tables=(
+            Table(
+                "informe",
+                "inf_mensal_fiagro_{period}.csv",
+                "Fund report",
+                ("cnpj_classe", "data_referencia"),
+                "cnpj_classe",
+            ),
+            Table(
+                "subclasse",
+                "inf_mensal_fiagro_subclasse_{period}.csv",
+                "Subclass net asset value per quota",
+                ("cnpj_classe", "data_referencia"),
+                "cnpj_classe",
+            ),
+        ),
+        period="month",
+        min_period="2025-05",
+        aliases=("fiagro", "agronegocio"),
     ),
     # -- market ------------------------------------------------------
     Dataset(

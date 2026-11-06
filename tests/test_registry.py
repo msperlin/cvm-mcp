@@ -59,14 +59,53 @@ def test_period_regex_matches_the_published_filenames():
 
 def test_expected_coverage():
     ids = {dataset.id for dataset in registry.all_datasets()}
-    for expected in ("dfp", "itr", "fre", "vlmo", "cgvn", "fi_inf_diario", "fi_cda", "oferta"):
+    for expected in (
+        "dfp",
+        "itr",
+        "fre",
+        "vlmo",
+        "cgvn",
+        "fi_inf_diario",
+        "fi_cda",
+        "fi_cad",
+        "fii_inf_mensal",
+        "fidc_inf_mensal",
+        "fiagro_inf_mensal",
+        "oferta",
+    ):
         assert expected in ids
-    assert registry.table_count() >= 80
+    assert registry.table_count() >= 100
+
+
+def test_structured_fund_datasets_cover_their_tables():
+    assert {table.slug for table in registry.get("fii").tables} == {
+        "geral",
+        "ativo_passivo",
+        "complemento",
+    }
+    assert len(registry.get("fidc").tables) == 18
+    assert {table.slug for table in registry.get("fiagro").tables} == {"informe", "subclasse"}
+    # The structured-fund portfolio lives in the CDA archive.
+    assert "fie" in {table.slug for table in registry.get("fi_cda").tables}
+
+
+@pytest.mark.parametrize(
+    "dataset, minimum",
+    [
+        ("fi_inf_diario", 202101),
+        ("fidc_inf_mensal", 202501),
+        ("fiagro_inf_mensal", 202505),
+    ],
+)
+def test_monthly_datasets_start_when_expected(dataset, minimum):
+    spec = registry.get(dataset)
+    assert spec.period == "month"
+    assert int(spec.min_period.replace("-", "")) == minimum
 
 
 def test_unknown_dataset_suggests_close_matches():
     with pytest.raises(KeyError) as excinfo:
-        registry.get("fii")
+        registry.get("banana")
     assert "unknown dataset" in str(excinfo.value)
 
 
