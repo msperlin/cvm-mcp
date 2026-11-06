@@ -560,6 +560,33 @@ the command at the checkout:
 }
 ```
 
+## Releasing
+
+Publishing happens on GitHub, not from a laptop, through PyPI
+[trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC), so no
+API token is stored anywhere.
+
+1. Bump `version` in `pyproject.toml` and commit it.
+2. Tag the commit with a matching `v` prefix and push it:
+
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+3. Draft a GitHub release for that tag and publish it.
+
+The `publish` workflow in `.github/workflows/publish.yml` then runs the offline
+test suite, builds the sdist and wheel, checks the metadata, verifies the tag
+matches the version, and uploads to PyPI. Re-running it manually
+(`workflow_dispatch`) rebuilds and re-uploads the current version, which PyPI
+rejects if the files already exist — so only do that after a failed release.
+
+One-time setup (already required before the first upload): on PyPI, add a
+pending publisher for project `cvm-mcp` with owner `msperlin`, repository
+`cvm-mcp`, workflow `publish.yml`, and environment `pypi`. The matching
+environment is declared in the workflow.
+
 ## Troubleshooting
 
 | Symptom | Fix |
