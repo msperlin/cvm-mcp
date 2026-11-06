@@ -54,7 +54,8 @@ Two tool layers:
 
 `scripts/parity_vs_mcps.py` builds the same slices twice — once through each
 standalone server's store, once through `cvm_mcp.store` — and compares every
-cell. Last run (2023):
+cell. It needs `cvm-dfp-mcp` and `cvm-fre-mcp` checked out alongside this repo,
+and skips with a message when they are absent. Last run (2023):
 
 ```
 DFP/BPA:   196 rows, 21 columns compared

@@ -21,13 +21,22 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVERS = ROOT.parent
+REFERENCE_PACKAGES = ("cvm_dfp", "cvm_fre")
 for sibling in ("cvm-dfp-mcp/src", "cvm-fre-mcp/src"):
     candidate = SERVERS / sibling
     if candidate.exists():
         sys.path.insert(0, str(candidate))
 
+import importlib.util
+
 from cvm_mcp.fetch import Client
 from cvm_mcp.store import Store
+
+
+def missing_references() -> list[str]:
+    """Reference servers that are not available in this checkout."""
+    return [name for name in REFERENCE_PACKAGES if importlib.util.find_spec(name) is None]
+
 
 DFP_COMPANIES = [1023, 4170, 16292]   # BB (bank chart), Vale, and a second filer
 DFP_DOCS = ["BPA", "BPP", "DRE"]
@@ -161,6 +170,15 @@ async def main() -> int:
     year = int(args.year)
     workdir = args.workdir
     workdir.mkdir(parents=True, exist_ok=True)
+
+    missing = missing_references()
+    if missing:
+        print(
+            "Reference servers not found: "
+            + ", ".join(missing)
+            + "\nParity check skipped (install cvm-dfp-mcp / cvm-fre-mcp alongside this repo)."
+        )
+        return 0
 
     print(f"DFP parity — {DFP_COMPANIES} in {year} ({', '.join(DFP_DOCS)})")
     reference = await dfp_reference(year, workdir / "dfp-ref")

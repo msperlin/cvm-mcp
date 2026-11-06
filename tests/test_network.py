@@ -126,10 +126,15 @@ def test_fund_family_routing_is_explicit():
 
 @pytest.mark.parity
 def test_parity_with_standalone_servers():
-    """Run the full data-level parity script against the two standalone MCPs."""
+    """Run the data-level parity script against the two standalone MCPs."""
     script = Path(__file__).resolve().parents[1] / "scripts" / "parity_vs_mcps.py"
     if not script.exists():
         pytest.skip("parity script not found")
+    references = [
+        Path(__file__).resolve().parents[2] / name for name in ("cvm-dfp-mcp", "cvm-fre-mcp")
+    ]
+    if not all(reference.exists() for reference in references):
+        pytest.skip("legacy cvm-dfp-mcp / cvm-fre-mcp are no longer installed")
     result = subprocess.run(
         [sys.executable, str(script), "--year", "2023"],
         check=False,
