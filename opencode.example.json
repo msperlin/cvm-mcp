@@ -1,12 +1,14 @@
 {
+  "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "servers": {
       "cvm-mcp": {
         "type": "local",
         "command": [
-          "/home/msperlin/GitRepo/mcp-servers/cvm-mcp/.venv/bin/python",
-          "-m",
-          "cvm_mcp"
+          "uvx",
+          "--from",
+          "git+https://github.com/msperlin/cvm-mcp.git",
+          "cvm-mcp"
         ]
       }
     }

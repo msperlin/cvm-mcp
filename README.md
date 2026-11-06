@@ -1,74 +1,461 @@
 # cvm-mcp
 
-One MCP server for the whole [CVM open-data repository](https://dados.cvm.gov.br)
-(`dados.cvm.gov.br`), the source behind the R packages *GetDFPData2* and
-*GetFREData*.
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
 
-It replaces, and is a strict superset of, `cvm-dfp-mcp` and `cvm-fre-mcp`:
+An MCP server for the [CVM open-data repository](https://dados.cvm.gov.br)
+(`dados.cvm.gov.br`) — the Brazilian securities regulator and the source behind
+the R packages *GetDFPData2* and *GetFREData*.
 
-| Domain | Datasets |
-|---|---|
-| Companies | `dfp`, `itr`, `fre` (36 tables), `fca`, `vlmo` (insider trading), `cgvn` (governance) |
-| Funds | `fi_inf_diario`, `fi_cda`, `fi_cad`, `fii_inf_mensal`, `fidc_inf_mensal` (18 tables), `fiagro_inf_mensal` |
-| Offerings | `oferta` (ICVM 400 / RCVM 160) |
-| Enforcement | `sancionador` |
-| Registry | `cad_cia_aberta` |
+It gives Claude Code, OpenCode, Cursor, VS Code, Codex, Gemini CLI and any other
+MCP client one interface to:
 
-**15 datasets, 110 tables, 34 tools.**
+- annual and quarterly financial statements (DFP / ITR)
+- the Formulário de Referência (FRE, 36 corporate tables)
+- fund NAVs, flows, portfolios and credit-fund reports
+- insider trading, governance, public offerings and sanctioning proceedings
+- ad-hoc SQL over everything, via DuckDB
 
-## Why one server
+**15 datasets, 111 tables, 34 tools.** Everything runs locally and read-only;
+data is downloaded on demand and cached on disk.
 
-The portal has ~1,259 files and 10.1 GB of archives, but only about five
-*shapes* of data. The server describes each dataset declaratively in
-`registry.py` — URL pattern, period granularity, tables inside the archive,
-normalizer — and the store turns every `(dataset, table, period)` into one
-Parquet partition. Adding a dataset is a data change, not a code change.
+> This server consolidates the earlier `cvm-dfp-mcp` and `cvm-fre-mcp` servers
+> and is a strict superset of both.
 
-## Design
+## Contents
 
-```
-src/cvm_mcp/
-├── app.py            MCP application object + instructions
-├── registry.py       declarative catalog of datasets and tables
-├── fetch.py          download, cache, revalidation, cross-process lock
-├── store.py          Parquet partitions + DuckDB views + read-only SQL
-├── normalize.py      Latin-1 reader, header cleaning, CNPJ, type inference
-├── identity.py       CNPJ ↔ cd_cvm ↔ ticker resolution
-├── schema_dfp.py     canonical DFP/ITR schema (shared with cvm-dfp-mcp)
-├── catalog_dfp.py    curated chart of accounts (shared with cvm-dfp-mcp)
-├── catalog_fre.py    the 36 FRE tables (shared with cvm-fre-mcp)
-├── fre_normalize.py  FRE normalization (shared with cvm-fre-mcp)
-├── data_dictionary.py curated column descriptions, units and caveats
-├── tools_*.py        the MCP tools, one module per domain
-└── server.py         entry point
-```
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Client setup](#client-setup)
+  - [Claude Code](#claude-code)
+  - [OpenCode](#opencode)
+  - [Claude Desktop](#claude-desktop)
+  - [Cursor](#cursor)
+  - [VS Code / GitHub Copilot](#vs-code--github-copilot)
+  - [Codex CLI](#codex-cli)
+  - [Gemini CLI](#gemini-cli)
+  - [Continue](#continue)
+  - [Other MCP clients](#other-mcp-clients)
+- [Example prompts](#example-prompts)
+- [Datasets](#datasets)
+- [Tools](#tools)
+- [Configuration](#configuration)
+- [Cache](#cache)
+- [Data notes](#data-notes)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-Two tool layers:
+## Requirements
 
-* **Curated** (28 tools): `get_statement_summary`, `get_fund_nav`,
-  `get_insider_trades`, `governance_score`, `league_table`, ...
-* **Generic** (`run_query`): DuckDB SQL over every cached table, with views named
-  `<dataset>__<table>`. This is the escape hatch that makes "the whole base"
-  reachable without one tool per table.
+- **Python 3.10+** — `uv` installs and manages it for you.
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — the only
+  prerequisite.
+- Network access to `dados.cvm.gov.br`.
+- Disk space for the cache. It is lazy: nothing is downloaded until you ask for
+  it. A full DFP + FRE history is a few GB; `fi_cda` is the heavy one (~270 MB
+  uncompressed per month).
 
-Six meta tools support both: `list_datasets`, `describe_dataset`, `cache_status`,
-`load_dataset`, `refresh_cache` and `run_query`.
-
-`load_dataset` populates the cache without forcing a refresh, and
-`describe_dataset(detail=True)` documents units and pitfalls for the columns of
-a table — the two steps an agent needs before writing SQL.
-
-## Install
+Install `uv`:
 
 ```bash
-uv sync
-uv run cvm-mcp          # stdio
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-`opencode.example.json` shows the MCP client configuration. The cache lives in
-`~/.cache/cvm-mcp` (override with `CVMMCP_CACHE_DIR`).
+Verify with `uv --version`.
 
-## Cache layout
+## Quick start
+
+The package is not on PyPI yet, so install it from the GitHub repository.
+
+**Run without installing** (best for trying it out and for client configs):
+
+```bash
+uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+```
+
+This starts a stdio MCP server and waits for a client. Seeing no output is
+expected; press `Ctrl+C` to stop it.
+
+**Install a persistent `cvm-mcp` command** (optional):
+
+```bash
+uv tool install git+https://github.com/msperlin/cvm-mcp.git
+cvm-mcp
+```
+
+If `cvm-mcp` is not found after installing, run `uv tool update-shell` and
+restart your terminal.
+
+**From source** (for development):
+
+```bash
+git clone https://github.com/msperlin/cvm-mcp.git
+cd cvm-mcp
+uv sync
+uv run cvm-mcp
+```
+
+## Client setup
+
+All configurations below run the server over **stdio**. They use `uvx`, which
+resolves and caches the package on first use.
+
+> **GUI clients and `PATH`:** Claude Desktop, Cursor and VS Code often do not
+> inherit your shell `PATH`. If the server fails to start with “command not
+> found”, run `which uvx` (macOS/Linux) or `where uvx` (Windows) and use that
+> absolute path as `command` — commonly `~/.local/bin/uvx`. Alternatively,
+> `uv tool install` and use the absolute path to `cvm-mcp`.
+
+### Claude Code
+
+Add it from the CLI, scoped to your user (available in every project):
+
+```bash
+claude mcp add --transport stdio --scope user cvm-mcp -- \
+  uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+```
+
+Check the connection:
+
+```bash
+claude mcp list
+```
+
+Or commit a project-scoped `.mcp.json` to the repository root:
+
+```json
+{
+  "mcpServers": {
+    "cvm-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ],
+      "timeout": 600000
+    }
+  }
+}
+```
+
+`timeout` is in milliseconds and applies per tool call. The first CVM download
+can take a while; 10 minutes is a safe ceiling.
+
+### OpenCode
+
+OpenCode V2 configures servers under `mcp.servers`. Add it globally with the
+CLI:
+
+```bash
+opencode mcp add cvm-mcp --global -- \
+  uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+```
+
+Check it with `opencode mcp list` (or `/mcps` inside OpenCode).
+
+Or edit `~/.config/opencode/opencode.json` (global) or `opencode.json`
+(project):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "cvm-mcp": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "--from",
+          "git+https://github.com/msperlin/cvm-mcp.git",
+          "cvm-mcp"
+        ]
+      }
+    }
+  }
+}
+```
+
+The repository also ships a ready-to-copy
+[`opencode.example.json`](opencode.example.json).
+
+> OpenCode V1 used server names directly under `mcp`; V2 uses `mcp.servers`.
+
+### Claude Desktop
+
+Edit the Claude Desktop config file:
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+```json
+{
+  "mcpServers": {
+    "cvm-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ]
+    }
+  }
+}
+```
+
+Quit Claude Desktop completely and reopen it. The server appears under
+**Connectors** / the tools menu.
+
+### Cursor
+
+Create `~/.cursor/mcp.json` for all projects, or `.cursor/mcp.json` in a
+project:
+
+```json
+{
+  "mcpServers": {
+    "cvm-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ]
+    }
+  }
+}
+```
+
+Reload the window if the server does not appear under **Customize → MCP**.
+
+### VS Code / GitHub Copilot
+
+Create `.vscode/mcp.json` in the workspace:
+
+```json
+{
+  "servers": {
+    "cvm-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ]
+    }
+  }
+}
+```
+
+VS Code uses the `servers` key. Portable `.mcp.json` files (Claude Desktop,
+Cursor, Cline, etc.) use `mcpServers` instead — do not mix the two.
+
+You can also run **MCP: Add Server** from the Command Palette and choose
+**Command (stdio)** with:
+
+```
+uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+```
+
+### Codex CLI
+
+Add to `~/.codex/config.toml` (or `.codex/config.toml` in a trusted project):
+
+```toml
+[mcp_servers.cvm-mcp]
+command = "uvx"
+args = ["--from", "git+https://github.com/msperlin/cvm-mcp.git", "cvm-mcp"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+```
+
+Codex reads server instructions and exposes the tools automatically. Use
+`/mcp` in a Codex session to inspect the connection.
+
+### Gemini CLI
+
+Add to `~/.gemini/settings.json` (user) or `.gemini/settings.json` (project):
+
+```json
+{
+  "mcpServers": {
+    "cvm-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ],
+      "timeout": 600000
+    }
+  }
+}
+```
+
+Then run `/mcp` inside Gemini CLI to check the connection. `timeout` is in
+milliseconds.
+
+### Continue
+
+Create `.continue/mcpServers/cvm-mcp.yaml`:
+
+```yaml
+name: CVM MCP
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: CVM
+    type: stdio
+    command: uvx
+    args:
+      - "--from"
+      - "git+https://github.com/msperlin/cvm-mcp.git"
+      - "cvm-mcp"
+```
+
+Continue can also import the JSON block from the [Other MCP clients](#other-mcp-clients)
+section into `.continue/mcpServers/`.
+
+### Other MCP clients
+
+Most clients accept a stdio server in this shape:
+
+```json
+{
+  "mcpServers": {
+    "cvm-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/msperlin/cvm-mcp.git",
+        "cvm-mcp"
+      ]
+    }
+  }
+}
+```
+
+If your client asks for a single command line:
+
+```bash
+uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+```
+
+Windows clients that cannot find `uvx` can use the executable installed by
+`uv tool install` directly, e.g.
+`C:\Users\<you>\.local\bin\cvm-mcp.exe`.
+
+## Example prompts
+
+Once connected, ask in natural language:
+
+- “What were Vale's revenue, EBIT and net debt in 2024? Cite the CVM/DFP
+  accounts.”
+- “Compare the last five years of ROE, net margin and net debt/EBITDA for
+  Petrobras, Vale and Itaú.”
+- “Show the board composition, compensation and shareholders of Banco do
+  Brasil in the latest Formulário de Referência.”
+- “Which insiders bought or sold WEG shares in the last six months?”
+- “List the largest FIDCs by net asset value in the latest month, with
+  delinquency and credit segments.”
+- “How much did Brazilian companies raise in public offerings in 2024, by asset
+  type and lead underwriter?”
+- “Find sanctioning proceedings mentioning insider trading since 2023.”
+- “Load DFP 2024 and run a SQL query joining the income statement with the
+  company registry.”
+
+The server is instructed to cite the dataset and reference period and never to
+invent figures.
+
+## Datasets
+
+| Domain | Datasets | Coverage |
+|---|---|---|
+| Companies | `dfp`, `itr`, `fre` (36 tables), `fca`, `vlmo` (insider trading), `cgvn` (governance) | DFP/ITR/FRE 2010+; FCA/VLMO/CGVN 2018+ |
+| Funds | `fi_inf_diario`, `fi_cda`, `fi_cad`, `fii_inf_mensal`, `fidc_inf_mensal` (18 tables), `fiagro_inf_mensal` | FI daily 2021-01+; CDA 2023-01+; FII 2016+; FIDC 2025-01+; FIAGRO 2025-05+ |
+| Offerings | `oferta` (ICVM 400 / RCVM 160) | 1988+ |
+| Enforcement | `sancionador` (PAS) | current |
+| Registry | `cad_cia_aberta` | current |
+
+Use `list_datasets` from a client to see the exact table names and view names.
+`describe_dataset` shows columns and coverage; `describe_dataset(detail=True)`
+adds units and caveats.
+
+## Tools
+
+There are two layers.
+
+**Curated tools** for the common questions:
+
+| Group | Tools |
+|---|---|
+| Identity | `search_company`, `resolve`, `list_companies`, `get_tickers` |
+| Statements | `list_account_codes`, `get_financial_statements`, `get_account_history`, `get_statement_summary` |
+| Corporate filings | `list_fre_tables`, `get_fre_table`, `get_company_overview`, `get_shareholders`, `get_compensation`, `get_board`, `get_capital` |
+| Insiders & governance | `get_insider_trades`, `insider_summary`, `governance_practices`, `governance_score` |
+| Funds | `search_fund`, `get_fund_nav`, `get_fund_flows`, `get_fund_portfolio`, `get_fidc_report`, `rank_funds` |
+| Offerings | `search_offerings`, `issuance_volume`, `league_table` |
+
+**Meta tools** support both layers:
+
+| Tool | Purpose |
+|---|---|
+| `list_datasets` | All datasets, tables and DuckDB view names |
+| `describe_dataset` | Columns, cached periods and (with `detail=True`) column meanings |
+| `load_dataset` | Download/parse a dataset or period without forcing a refresh |
+| `cache_status` | What is cached, per dataset, with sizes |
+| `refresh_cache` | Force a re-download and rebuild |
+| `run_query` | Read-only DuckDB SQL over every cached table |
+
+`run_query` sees tables as `<dataset>__<table>`, e.g. `dfp__dre_con`,
+`fi_inf_diario__informe`, `vlmo__transacoes`. Only cached periods exist, so call
+`load_dataset` first when you need a specific period.
+
+## Configuration
+
+All settings are optional environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CVMMCP_CACHE_DIR` | `~/.cache/cvm-mcp` | Cache root (downloads + Parquet) |
+| `CVMMCP_REFRESH_HOURS` | `12` | Revalidation window for CVM archives; `0` disables revalidation |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, `streamable-http` or `sse` |
+| `MCP_HOST` | `127.0.0.1` | Host for the HTTP transports |
+| `MCP_PORT` | `8000` | Port for the HTTP transports |
+
+Add `CVMMCP_CACHE_DIR` wherever your client expects environment variables:
+
+```json
+{
+  "env": {
+    "CVMMCP_CACHE_DIR": "/absolute/path/to/cvm-cache"
+  }
+}
+```
+
+For a long-running HTTP server:
+
+```bash
+MCP_TRANSPORT=streamable-http MCP_HOST=127.0.0.1 MCP_PORT=8000 cvm-mcp
+```
+
+The HTTP transports have **no authentication**; bind to localhost or put the
+server behind a reverse proxy.
+
+## Cache
 
 ```
 ~/.cache/cvm-mcp/
@@ -77,35 +464,36 @@ uv run cvm-mcp          # stdio
 └── parquet/v1/<dataset>/<table>/period=<YYYY|YYYYMM|all>/data.parquet
 ```
 
-Everything is lazy: a dataset is downloaded and parsed the first time a tool
-asks for it. The current month is rewritten by CVM daily, so its partitions are
-refreshed every 12 h (configurable with `CVMMCP_REFRESH_HOURS`).
+- Everything is lazy. The first call for a dataset downloads and parses the CVM
+  archive; later calls read the Parquet partition.
+- CVM rewrites the current month in place, so archives are revalidated every
+  12 h by default (`CVMMCP_REFRESH_HOURS`).
+- A `304 Not Modified` updates only the sidecar's `checked_at`; the archive mtime
+  stays put, so the Parquet partition is reused instead of being parsed again.
+- `load_dataset` populates the cache without forcing a refresh.
+  `refresh_cache` forces a re-download and rebuild.
+- `cache_status` reports datasets, periods, partition counts and bytes. To
+  reclaim space, delete `~/.cache/cvm-mcp/parquet` (it is rebuilt on demand) or
+  point `CVMMCP_CACHE_DIR` at a larger disk.
 
-A `304 Not Modified` only updates the sidecar's `checked_at`; the archive mtime
-stays put, so the Parquet partition is reused instead of being parsed again.
-Use `load_dataset` to populate the cache without forcing a refresh, and
-`refresh_cache` when CVM republished a file and you need a rebuild.
+## Data notes
 
-## Tests
-
-```bash
-uv run pytest -m "not network"    # fast, offline
-uv run pytest -m network          # hits dados.cvm.gov.br
-```
-
-## Coverage notes
-
-* DFP/ITR keep CVM's uppercase column names and `VL_CONTA_BRL`.
-* FRE keeps the GetFREData-compatible snake_case schema and key block.
-* Newer datasets (VLMO, CGVN, funds, offerings) are normalized to snake_case and
-  gain a 14-digit `cnpj` column plus a `_period` column.
-* `fi_cda` is heavy (~270 MB uncompressed per month); build one block at a time.
+- **DFP / ITR** keep CVM's uppercase column names. `VL_CONTA` is the raw value;
+  `VL_CONTA_BRL` is already scaled by `ESCALA_MOEDA` and is the number to report.
+- **FRE** keeps the GetFREData-compatible snake_case schema and key block
+  (`cd_cvm`, `cnpj`, `nome_companhia`, `data_referencia`, `versao`,
+  `id_documento`).
+- Newer datasets (VLMO, CGVN, funds, offerings) are normalized to snake_case and
+  gain a 14-digit `cnpj` column and a `_period` column.
+- `fi_cda` is heavy (~270 MB uncompressed per month). Build one block/period at a
+  time; `load_dataset` refuses more than three periods of a heavy dataset in one
+  call.
 
 ### Fund family routing
 
-The CVM splits funds by *instrument*, not by manager, and the tools hide that.
-`get_fund_nav` and `get_fund_portfolio` resolve the class CNPJ in `fi_cad`,
-read its `tipo_classe` and pick the dataset:
+CVM splits funds by *instrument*, not by manager, and the tools hide that.
+`get_fund_nav` and `get_fund_portfolio` resolve the class CNPJ in `fi_cad`, read
+its `tipo_classe` and pick the dataset:
 
 | Family | Series | Portfolio |
 |---|---|---|
@@ -115,12 +503,77 @@ read its `tipo_classe` and pick the dataset:
 | FIAGRO | `fiagro_inf_mensal` | `fi_cda/fie` |
 
 `get_fidc_report` adds the credit dashboard (assets, portfolio, PL, delinquency).
-FIP is quarterly and is not in the registry yet; the tools say so explicitly.
 
-Known gaps: FIDC monthly reports start in 2025-01 — 2013–2024 lives in the
-`HIST/` folder with a different layout (one archive per year, monthly members)
-and is not wired up. FII history covers 2016 onwards.
+**Known gaps:** FIP is quarterly and is not wired up yet; the tools say so
+explicitly. FIDC monthly reports start in 2025-01 — 2013–2024 lives in the
+`HIST/` folder with a different layout and is not wired up. FII history starts
+in 2016.
+
+## How it works
+
+The portal has ~1,259 files and ~10 GB of archives, but only about five *shapes*
+of data. Each dataset is described declaratively in `registry.py` — URL pattern,
+period granularity, tables inside the archive, normalizer — and the store turns
+every `(dataset, table, period)` into one Parquet partition. Adding a dataset is
+a data change, not a code change.
+
+```
+src/cvm_mcp/
+├── app.py             MCP application object + server instructions
+├── registry.py        declarative catalog of datasets and tables
+├── fetch.py           download, revalidation, metadata sidecars, file locks
+├── store.py           Parquet partitions + DuckDB views + read-only SQL
+├── normalize.py       Latin-1 reader, header cleaning, CNPJ, type inference
+├── identity.py        CNPJ ↔ cd_cvm ↔ ticker resolution
+├── schema_dfp.py      canonical DFP/ITR schema
+├── catalog_dfp.py     curated chart of accounts and roles
+├── catalog_fre.py     the 36 FRE tables
+├── fre_normalize.py   FRE normalization
+├── data_dictionary.py curated column descriptions, units and caveats
+├── tools_*.py         the MCP tools, one module per domain
+└── server.py          entry point
+```
+
+Each archive is downloaded once and revalidated with `If-Modified-Since`;
+downloads are guarded by a cross-process file lock, and SQL is restricted to a
+single read-only `SELECT` / `WITH` over the cached views.
+
+## Development
+
+```bash
+git clone https://github.com/msperlin/cvm-mcp.git
+cd cvm-mcp
+uv sync
+
+uv run pytest -m "not network"      # fast, offline
+uv run pytest -m network            # hits dados.cvm.gov.br
+uv run python scripts/smoke_mcp.py  # end-to-end stdio smoke test
+```
+
+To run the working tree instead of the GitHub package in a client config, point
+the command at the checkout:
+
+```json
+{
+  "command": "uv",
+  "args": ["run", "--directory", "/absolute/path/to/cvm-mcp", "cvm-mcp"]
+}
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `uvx: command not found` | Install `uv`, or use the absolute path from `which uvx` / `where uvx`. GUI clients often do not inherit `PATH`. |
+| Server starts but no tools appear | Check the client's MCP panel: `claude mcp list`, `opencode mcp list`, `/mcp` in Gemini/Codex/Cursor/VS Code. Restart the app after editing JSON. |
+| First tool call is slow | The server is downloading and parsing a CVM archive. Use `load_dataset` for the exact period you need, and raise the client's tool timeout. `fi_cda` is the heaviest dataset. |
+| `run_query` says “no data cached” | Only cached periods are visible to SQL. Call `load_dataset` (e.g. `dataset="dfp", period="2024"`) or a curated tool first. |
+| The latest month looks stale | CVM rewrites the current month in place. Call `refresh_cache` for that dataset/period. |
+| Disk is filling up | Check `cache_status`; delete `~/.cache/cvm-mcp/parquet` (rebuilt on demand) or move `CVMMCP_CACHE_DIR`. |
+| `CVM returned HTTP 5xx` / timeouts | CVM is temporarily unavailable; the server retries 429/500/502/503/504 with backoff. Check connectivity to `dados.cvm.gov.br`. |
+| Unknown dataset/table | Call `list_datasets` and `describe_dataset`; ids and table slugs are exact. |
 
 ## License
 
-MIT.
+MIT. CVM data is public; see the [CVM open-data portal](https://dados.cvm.gov.br)
+for the original terms and update policy.
