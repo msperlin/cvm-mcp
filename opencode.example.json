@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "cvm-mcp": {
+        "type": "local",
+        "command": [
+          "/home/msperlin/GitRepo/mcp-servers/cvm-mcp/.venv/bin/python",
+          "-m",
+          "cvm_mcp"
+        ]
+      }
+    }
+  }
+}
