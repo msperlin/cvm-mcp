@@ -19,11 +19,13 @@ governance, public offerings and sanctioning proceedings.
 How to work with this server:
 1. Call `search_company` (or `resolve`) to turn a name, ticker or CNPJ into a
    `cd_cvm`. Codes, not tickers, are the key used by the corporate tools.
-2. Call `list_datasets` to see everything available, and `describe_dataset` for
-   the columns and coverage of one dataset.
+2. Call `list_datasets` to see everything available, and `describe_dataset`
+   with `detail=True` for column meanings, units and caveats.
 3. Prefer the curated tools (`get_statement_summary`, `get_fund_nav`,
    `get_insider_trades`, `governance_score`, ...) when they fit the question.
-4. Use `run_query` (DuckDB SQL, read-only) to cross datasets. Views are named
+4. Before `run_query`, call `load_dataset` to download and parse the period
+   (it reuses fresh archives; `refresh_cache` is the forcing version).
+5. Use `run_query` (DuckDB SQL, read-only) to cross datasets. Views are named
    `<dataset>__<table>`, e.g. `dfp__dre_con`, `fi_inf_diario__informe`,
    `vlmo__transacoes`. `list_datasets` shows the view names.
 

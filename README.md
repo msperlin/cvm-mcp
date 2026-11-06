@@ -14,7 +14,7 @@ It replaces, and is a strict superset of, `cvm-dfp-mcp` and `cvm-fre-mcp`:
 | Enforcement | `sancionador` |
 | Registry | `cad_cia_aberta` |
 
-**15 datasets, 110 tables, 33 tools.**
+**15 datasets, 110 tables, 34 tools.**
 
 ## Why one server
 
@@ -38,17 +38,25 @@ src/cvm_mcp/
 ├── catalog_dfp.py    curated chart of accounts (shared with cvm-dfp-mcp)
 ├── catalog_fre.py    the 36 FRE tables (shared with cvm-fre-mcp)
 ├── fre_normalize.py  FRE normalization (shared with cvm-fre-mcp)
+├── data_dictionary.py curated column descriptions, units and caveats
 ├── tools_*.py        the MCP tools, one module per domain
 └── server.py         entry point
 ```
 
 Two tool layers:
 
-* **Curated** (33 tools): `get_statement_summary`, `get_fund_nav`,
+* **Curated** (28 tools): `get_statement_summary`, `get_fund_nav`,
   `get_insider_trades`, `governance_score`, `league_table`, ...
 * **Generic** (`run_query`): DuckDB SQL over every cached table, with views named
   `<dataset>__<table>`. This is the escape hatch that makes "the whole base"
   reachable without one tool per table.
+
+Six meta tools support both: `list_datasets`, `describe_dataset`, `cache_status`,
+`load_dataset`, `refresh_cache` and `run_query`.
+
+`load_dataset` populates the cache without forcing a refresh, and
+`describe_dataset(detail=True)` documents units and pitfalls for the columns of
+a table — the two steps an agent needs before writing SQL.
 
 ## Install
 
@@ -65,12 +73,18 @@ uv run cvm-mcp          # stdio
 ```
 ~/.cache/cvm-mcp/
 ├── downloads/                     raw zips and CSVs, revalidated with If-Modified-Since
+│   └── <archive>.meta.json        remote Last-Modified/ETag + last revalidation time
 └── parquet/v1/<dataset>/<table>/period=<YYYY|YYYYMM|all>/data.parquet
 ```
 
 Everything is lazy: a dataset is downloaded and parsed the first time a tool
 asks for it. The current month is rewritten by CVM daily, so its partitions are
 refreshed every 12 h (configurable with `CVMMCP_REFRESH_HOURS`).
+
+A `304 Not Modified` only updates the sidecar's `checked_at`; the archive mtime
+stays put, so the Parquet partition is reused instead of being parsed again.
+Use `load_dataset` to populate the cache without forcing a refresh, and
+`refresh_cache` when CVM republished a file and you need a rebuild.
 
 ## Tests
 

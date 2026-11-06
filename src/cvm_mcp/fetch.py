@@ -10,12 +10,18 @@ module needs. Two behaviours matter:
 * **One writer per file.** Several agents may run the same server at once, so
   downloads are guarded by a cross-process ``filelock``, not just an asyncio
   lock.
+* **Separate version from check time.** Each download has a small
+  ``*.meta.json`` sidecar holding the remote ``Last-Modified``/ETag and the
+  last time we revalidated it. A ``304 Not Modified`` refreshes only
+  ``checked_at`` and leaves the archive ``mtime`` alone, so the Parquet store
+  does not rebuild a partition when the source did not change.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import random
 import re
@@ -23,7 +29,7 @@ import time
 import zipfile
 from email.utils import formatdate
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import httpx
 from filelock import FileLock
@@ -31,6 +37,7 @@ from filelock import FileLock
 BASE_URL: Final[str] = "https://dados.cvm.gov.br/dados/"
 RETRY_STATUS: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 LISTING_TTL_SECONDS: Final[int] = 3600
+META_VERSION: Final[int] = 1
 
 _HREF = re.compile(r'href="([^"?][^"]*?)"')
 
@@ -130,7 +137,9 @@ class Client:
 
     # -- listings -----------------------------------------------------
 
-    async def list_files(self, directory: str, *, refresh: bool = False) -> dict[str, str]:
+    async def list_files(
+        self, directory: str, *, refresh: bool = False
+    ) -> dict[str, str]:
         """List one CVM directory. ``directory`` is absolute or relative to /dados/."""
         url = directory if directory.startswith("http") else BASE_URL + directory
         if not url.endswith("/"):
@@ -171,7 +180,9 @@ class Client:
         name = url.rstrip("/").rsplit("/", 1)[-1]
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
         destination = self.download_dir / f"{digest}-{name}"
-        refresh = self.refresh_seconds if refresh_hours is None else refresh_hours * 3600.0
+        refresh = (
+            self.refresh_seconds if refresh_hours is None else refresh_hours * 3600.0
+        )
 
         usable = destination.exists() and self._is_usable(destination)
         if usable and not self._is_stale(destination, refresh):
@@ -191,7 +202,9 @@ class Client:
                 )
             downloaded = await self._download(url, destination, headers)
             if not downloaded and not usable:
-                raise CVMUnavailable(f"CVM kept the file unchanged but {destination} is missing")
+                raise CVMUnavailable(
+                    f"CVM kept the file unchanged but {destination} is missing"
+                )
             if not self._is_usable(destination):
                 destination.unlink(missing_ok=True)
                 raise CVMUnavailable(f"downloaded file is not valid: {url}")
@@ -201,16 +214,82 @@ class Client:
 
     # -- internals ----------------------------------------------------
 
+    def _meta_path(self, destination: Path) -> Path:
+        """Sidecar next to the archive: ``<archive>.meta.json``."""
+        return destination.with_name(destination.name + ".meta.json")
+
+    def _read_meta(self, destination: Path) -> dict[str, Any]:
+        try:
+            with self._meta_path(destination).open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _write_meta(
+        self,
+        destination: Path,
+        *,
+        url: str | None = None,
+        response: httpx.Response | None = None,
+    ) -> None:
+        """Record provenance and the time of this revalidation.
+
+        Metadata is auxiliary: a failure here must never break a download.
+        """
+        previous = self._read_meta(destination)
+        try:
+            size = destination.stat().st_size
+        except OSError:
+            size = None
+        payload: dict[str, Any] = {
+            "version": META_VERSION,
+            "url": url or previous.get("url"),
+            "etag": previous.get("etag"),
+            "last_modified": previous.get("last_modified"),
+            "checked_at": time.time(),
+            "bytes": size,
+        }
+        if response is not None:
+            payload["etag"] = response.headers.get("etag") or payload["etag"]
+            payload["last_modified"] = (
+                response.headers.get("last-modified") or payload["last_modified"]
+            )
+
+        target = self._meta_path(destination)
+        temporary = target.with_name(target.name + ".tmp")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            )
+            os.replace(temporary, target)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+
+    def _last_checked(self, path: Path) -> float:
+        """When the source was last revalidated, not when it was downloaded."""
+        try:
+            value = self._read_meta(path).get("checked_at")
+            if value is not None:
+                return float(value)
+        except (TypeError, ValueError):
+            pass
+        return path.stat().st_mtime
+
     def _lock(self, key: str) -> asyncio.Lock:
         if key not in self._locks:
             self._locks[key] = asyncio.Lock()
         return self._locks[key]
 
-    @staticmethod
-    def _is_stale(path: Path, refresh_seconds: float) -> bool:
+    def _is_stale(self, path: Path, refresh_seconds: float) -> bool:
         if refresh_seconds <= 0:
             return False
-        return (time.time() - path.stat().st_mtime) > refresh_seconds
+        try:
+            checked = self._last_checked(path)
+        except OSError:
+            return True
+        return (time.time() - checked) > refresh_seconds
 
     @staticmethod
     def _is_usable(path: Path) -> bool:
@@ -222,7 +301,9 @@ class Client:
         except (zipfile.BadZipFile, OSError):
             return False
 
-    async def _download(self, url: str, destination: Path, headers: dict[str, str]) -> bool:
+    async def _download(
+        self, url: str, destination: Path, headers: dict[str, str]
+    ) -> bool:
         """Stream ``url`` to ``destination``. Returns ``False`` on HTTP 304."""
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.name + ".part")
@@ -233,7 +314,9 @@ class Client:
             try:
                 async with http.stream("GET", url, headers=headers) as response:
                     if response.status_code == 304:
-                        os.utime(destination, None)
+                        # The archive keeps its version mtime; only the check
+                        # timestamp moves so the Parquet store can reuse it.
+                        self._write_meta(destination, response=response)
                         return False
                     if response.status_code in RETRY_STATUS:
                         last_error = CVMUnavailable(
@@ -248,6 +331,7 @@ class Client:
                             async for chunk in response.aiter_bytes(1 << 16):
                                 handle.write(chunk)
                         os.replace(temporary, destination)
+                        self._write_meta(destination, url=url, response=response)
                         return True
             except httpx.HTTPError as exc:
                 last_error = exc

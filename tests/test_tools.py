@@ -32,6 +32,7 @@ EXPECTED = {
     "list_datasets",
     "describe_dataset",
     "cache_status",
+    "load_dataset",
     "refresh_cache",
     "run_query",
     "search_offerings",
@@ -77,6 +78,53 @@ def test_describe_unknown_dataset_returns_an_error():
     assert '"error"' in describe_dataset("does-not-exist")
 
 
+def test_load_dataset_rejects_unknown_dataset():
+    from cvm_mcp.tools_meta import load_dataset
+
+    assert '"error"' in asyncio.run(load_dataset("does-not-exist"))
+
+
+def test_load_dataset_rejects_unknown_table():
+    from cvm_mcp.tools_meta import load_dataset
+
+    result = asyncio.run(load_dataset("dfp", table="banana"))
+    assert '"error"' in result
+    assert "unknown table" in result
+
+
+def test_period_request_parsing():
+    from cvm_mcp.tools_meta import _period_request
+
+    assert _period_request(None) is None
+    assert _period_request("latest") is None
+    assert _period_request("*") == ["*"]
+    assert _period_request("2023, 2024") == ["2023", "2024"]
+
+
+def test_data_dictionary_explains_statement_values():
+    from cvm_mcp.data_dictionary import describe_columns
+
+    details = {
+        row["name"]: row
+        for row in describe_columns("dfp", "dre_con", ["VL_CONTA", "VL_CONTA_BRL"])
+    }
+    assert "ESCALA_MOEDA" in details["VL_CONTA"]["description"]
+    assert details["VL_CONTA_BRL"]["unit"] == "BRL"
+
+
+def test_data_dictionary_preserves_requested_order():
+    from cvm_mcp.data_dictionary import describe_columns
+
+    details = describe_columns(
+        "fre", "posicao_acionaria", ["percentual_total_acoes_circulacao", "acionista"]
+    )
+    assert [row["name"] for row in details] == [
+        "percentual_total_acoes_circulacao",
+        "acionista",
+    ]
+    assert details[0]["unit"] == "percent"
+
+
 def test_overview_without_registry_returns_an_error(monkeypatch):
     from cvm_mcp import tools_companies
 
@@ -109,4 +157,3 @@ def test_month_helpers():
     assert _month_iso("202503") == "2025-03"
     assert _month_range("202511", "202602") == ["202511", "202512", "202601", "202602"]
     assert _years_of(["202412", "202501", "202503"]) == ["2024", "2025"]
-
