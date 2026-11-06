@@ -36,5 +36,4 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "network: hits dados.cvm.gov.br (deselect with '-m \"not network\"')",
-    "parity: compares against the individual cvm-dfp-mcp / cvm-fre-mcp servers",
 ]

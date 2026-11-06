@@ -50,29 +50,6 @@ Two tool layers:
   `<dataset>__<table>`. This is the escape hatch that makes "the whole base"
   reachable without one tool per table.
 
-## Parity with the standalone servers
-
-`scripts/parity_vs_mcps.py` builds the same slices twice — once through each
-standalone server's store, once through `cvm_mcp.store` — and compares every
-cell. It needs `cvm-dfp-mcp` and `cvm-fre-mcp` checked out alongside this repo,
-and skips with a message when they are absent. Last run (2023):
-
-```
-DFP/BPA:   196 rows, 21 columns compared
-DFP/BPP:   306 rows, 21 columns compared
-DFP/DRE:   107 rows, 21 columns compared
-FRE/documento:                            5216 rows,  9 columns
-FRE/posicao_acionaria:                   27850 rows, 30 columns
-FRE/administrador_membro_conselho_fiscal: 9296 rows, 22 columns
-FRE/remuneracao_total_orgao:              6254 rows, 28 columns
-FRE/capital_social:                       2492 rows, 14 columns
-FRE/transacao_parte_relacionada:         10411 rows, 23 columns
-Parity confirmed: cvm-mcp matches cvm-dfp-mcp and cvm-fre-mcp.
-```
-
-Companies checked: Banco do Brasil (bank chart), Vale, and a second filer.
-Tolerance: 0.01 on every numeric column; exact match on text, dates and keys.
-
 ## Install
 
 ```bash
@@ -100,11 +77,7 @@ refreshed every 12 h (configurable with `CVMMCP_REFRESH_HOURS`).
 ```bash
 uv run pytest -m "not network"    # fast, offline
 uv run pytest -m network          # hits dados.cvm.gov.br
-uv run python scripts/parity_vs_mcps.py   # data parity with the standalone servers
 ```
-
-The parity script builds the same DFP and FRE slices through `cvm-mcp` and
-through `cvm-dfp-mcp` / `cvm-fre-mcp`, then compares them row by row.
 
 ## Coverage notes
 

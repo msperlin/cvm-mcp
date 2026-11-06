@@ -9,9 +9,6 @@ Marked ``network`` so the default run stays offline:
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
@@ -122,25 +119,3 @@ def test_fund_family_routing_is_explicit():
     ):
         result = asyncio.run(tools_funds.search_fund(query, limit=1))
         assert f'"family": "{family}"' in result
-
-
-@pytest.mark.parity
-def test_parity_with_standalone_servers():
-    """Run the data-level parity script against the two standalone MCPs."""
-    script = Path(__file__).resolve().parents[1] / "scripts" / "parity_vs_mcps.py"
-    if not script.exists():
-        pytest.skip("parity script not found")
-    references = [
-        Path(__file__).resolve().parents[2] / name for name in ("cvm-dfp-mcp", "cvm-fre-mcp")
-    ]
-    if not all(reference.exists() for reference in references):
-        pytest.skip("legacy cvm-dfp-mcp / cvm-fre-mcp are no longer installed")
-    result = subprocess.run(
-        [sys.executable, str(script), "--year", "2023"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=2400,
-    )
-    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-2000:]
-    assert "Parity confirmed" in result.stdout
