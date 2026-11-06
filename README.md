@@ -1,5 +1,6 @@
 # cvm-mcp
 
+[![PyPI](https://img.shields.io/pypi/v/cvm-mcp)](https://pypi.org/project/cvm-mcp/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
@@ -72,12 +73,12 @@ Verify with `uv --version`.
 
 ## Quick start
 
-The package is not on PyPI yet, so install it from the GitHub repository.
+The package is on [PyPI](https://pypi.org/project/cvm-mcp/).
 
 **Run without installing** (best for trying it out and for client configs):
 
 ```bash
-uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+uvx cvm-mcp
 ```
 
 This starts a stdio MCP server and waits for a client. Seeing no output is
@@ -86,7 +87,7 @@ expected; press `Ctrl+C` to stop it.
 **Install a persistent `cvm-mcp` command** (optional):
 
 ```bash
-uv tool install git+https://github.com/msperlin/cvm-mcp.git
+uv tool install cvm-mcp
 cvm-mcp
 ```
 
@@ -119,7 +120,7 @@ Add it from the CLI, scoped to your user (available in every project):
 
 ```bash
 claude mcp add --transport stdio --scope user cvm-mcp -- \
-  uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+  uvx cvm-mcp
 ```
 
 Check the connection:
@@ -137,8 +138,6 @@ Or commit a project-scoped `.mcp.json` to the repository root:
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ],
       "timeout": 600000
@@ -157,7 +156,7 @@ CLI:
 
 ```bash
 opencode mcp add cvm-mcp --global -- \
-  uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+  uvx cvm-mcp
 ```
 
 Check it with `opencode mcp list` (or `/mcps` inside OpenCode).
@@ -174,8 +173,6 @@ Or edit `~/.config/opencode/opencode.json` (global) or `opencode.json`
         "type": "local",
         "command": [
           "uvx",
-          "--from",
-          "git+https://github.com/msperlin/cvm-mcp.git",
           "cvm-mcp"
         ]
       }
@@ -205,8 +202,6 @@ Edit the Claude Desktop config file:
     "cvm-mcp": {
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ]
     }
@@ -229,8 +224,6 @@ project:
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ]
     }
@@ -251,8 +244,6 @@ Create `.vscode/mcp.json` in the workspace:
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ]
     }
@@ -267,7 +258,7 @@ You can also run **MCP: Add Server** from the Command Palette and choose
 **Command (stdio)** with:
 
 ```
-uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+uvx cvm-mcp
 ```
 
 ### Codex CLI
@@ -277,7 +268,7 @@ Add to `~/.codex/config.toml` (or `.codex/config.toml` in a trusted project):
 ```toml
 [mcp_servers.cvm-mcp]
 command = "uvx"
-args = ["--from", "git+https://github.com/msperlin/cvm-mcp.git", "cvm-mcp"]
+args = ["cvm-mcp"]
 startup_timeout_sec = 30
 tool_timeout_sec = 600
 ```
@@ -295,8 +286,6 @@ Add to `~/.gemini/settings.json` (user) or `.gemini/settings.json` (project):
     "cvm-mcp": {
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ],
       "timeout": 600000
@@ -321,8 +310,6 @@ mcpServers:
     type: stdio
     command: uvx
     args:
-      - "--from"
-      - "git+https://github.com/msperlin/cvm-mcp.git"
       - "cvm-mcp"
 ```
 
@@ -339,8 +326,6 @@ Most clients accept a stdio server in this shape:
     "cvm-mcp": {
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/msperlin/cvm-mcp.git",
         "cvm-mcp"
       ]
     }
@@ -351,7 +336,7 @@ Most clients accept a stdio server in this shape:
 If your client asks for a single command line:
 
 ```bash
-uvx --from git+https://github.com/msperlin/cvm-mcp.git cvm-mcp
+uvx cvm-mcp
 ```
 
 Windows clients that cannot find `uvx` can use the executable installed by

@@ -1,6 +1,6 @@
 [project]
 name = "cvm-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "One MCP server for the whole CVM open-data repository (dados.cvm.gov.br)"
 readme = "README.md"
 requires-python = ">=3.10"
