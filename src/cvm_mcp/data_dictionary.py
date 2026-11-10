@@ -198,6 +198,93 @@ TABLE_COLUMNS: dict[tuple[str, str], dict[str, ColumnInfo]] = {
             "Last trading date, if the security was delisted.", unit="date"
         ),
     },
+    # -- DFP/ITR filings ---------------------------------------------
+    ("dfp", "documento"): {
+        "categ_doc": _info("Document category, e.g. 'DFP'."),
+        "id_doc": _info(
+            "CVM document id.",
+            notes="Use it to cite the filing; the download URL is in `link_doc`.",
+        ),
+        "dt_refer": _info("Reference date of the filing.", unit="date"),
+        "dt_receb": _info("Date CVM received the filing.", unit="date"),
+        "versao": _info(
+            "Filing version.",
+            notes="Amended filings keep the same reference date and a higher version.",
+        ),
+        "link_doc": _info(
+            "URL of the complete filing (ZIP with the PDF that contains the notas explicativas).",
+            notes="Download with get_dfp_notes; the CSV tables do not carry the notes.",
+        ),
+    },
+    ("dfp", "parecer"): {
+        "tp_relat_aud": _info("Auditor report type, when present."),
+        "tp_parecer_decl": _info(
+            "Kind of statement, e.g. 'Declaração dos Diretores sobre as Demonstrações Financeiras'."
+        ),
+        "num_item_parecer_decl": _info("Item number inside the statement."),
+        "txt_parecer_decl": _info(
+            "Full free text of the statement.",
+            notes="Long text; request the table explicitly when loading the dataset.",
+        ),
+    },
+    ("dfp", "composicao_capital"): {
+        "qt_acao_ordin_cap_integr": _info("Ordinary shares in the paid-in capital.", unit="shares"),
+        "qt_acao_pref_cap_integr": _info("Preferred shares in the paid-in capital.", unit="shares"),
+        "qt_acao_total_cap_integr": _info("Total shares in the paid-in capital.", unit="shares"),
+        "qt_acao_ordin_tesouro": _info("Ordinary shares held in treasury.", unit="shares"),
+        "qt_acao_pref_tesouro": _info("Preferred shares held in treasury.", unit="shares"),
+        "qt_acao_total_tesouro": _info("Total shares held in treasury.", unit="shares"),
+    },
+    ("itr", "documento"): {
+        "categ_doc": _info("Document category, e.g. 'ITR'."),
+        "id_doc": _info("CVM document id."),
+        "dt_refer": _info("Reference date of the filing.", unit="date"),
+        "dt_receb": _info("Date CVM received the filing.", unit="date"),
+        "versao": _info("Filing version."),
+        "link_doc": _info(
+            "URL of the complete filing (ZIP with the PDF that contains the notas explicativas)."
+        ),
+    },
+    ("itr", "parecer"): {
+        "tp_relat_esp": _info("Type of the special/limited assurance report, when present."),
+        "tp_parecer_decl": _info("Kind of statement."),
+        "num_item_parecer_decl": _info("Item number inside the statement."),
+        "txt_parecer_decl": _info("Full free text of the statement."),
+    },
+    ("itr", "composicao_capital"): {
+        "qt_acao_ordin_cap_integr": _info("Ordinary shares in the paid-in capital.", unit="shares"),
+        "qt_acao_pref_cap_integr": _info("Preferred shares in the paid-in capital.", unit="shares"),
+        "qt_acao_total_cap_integr": _info("Total shares in the paid-in capital.", unit="shares"),
+        "qt_acao_ordin_tesouro": _info("Ordinary shares held in treasury.", unit="shares"),
+        "qt_acao_pref_tesouro": _info("Preferred shares held in treasury.", unit="shares"),
+        "qt_acao_total_tesouro": _info("Total shares held in treasury.", unit="shares"),
+    },
+    # -- extracted filing text (derived cache) ------------------------
+    ("doc_text", "pagina"): {
+        "kind": _info("Source dataset: 'dfp' (annual) or 'itr' (quarterly)."),
+        "ano": _info("Reference year of the filing.", unit="year"),
+        "pagina": _info("Page number in the filing PDF."),
+        "texto": _info("Extracted page text (may contain OCR-free PDF artefacts)."),
+        "texto_fold": _info(
+            "Accent-free lowercase copy used for searching.",
+            notes="Search this column, report `texto`.",
+        ),
+        "id_doc": _info("CVM document id of the filing."),
+        "link_doc": _info("URL the PDF was downloaded from."),
+    },
+    ("doc_text", "nota"): {
+        "kind": _info("Source dataset: 'dfp' or 'itr'."),
+        "ano": _info("Reference year of the filing.", unit="year"),
+        "nota_numero": _info(
+            "Note number detected in the PDF.",
+            notes="Best effort: only sequential headings are accepted.",
+        ),
+        "nota_titulo": _info("Note heading text."),
+        "pagina_inicio": _info("First PDF page of the note."),
+        "pagina_fim": _info("Last PDF page of the note."),
+        "texto": _info("Full text of the note."),
+        "texto_fold": _info("Accent-free lowercase copy used for searching."),
+    },
     ("vlmo", "transacoes"): {
         "data_movimentacao": _info("Trade date.", unit="date"),
         "tipo_empresa": _info("Issuer category in the filing."),

@@ -361,6 +361,8 @@ Once connected, ask in natural language:
 - “Find sanctioning proceedings mentioning insider trading since 2023.”
 - “Load DFP 2024 and run a SQL query joining the income statement with the
   company registry.”
+- “What does Vale's explanatory note on provisions say for 2024? Quote the
+  relevant passage and the PDF page.”
 
 The server is instructed to cite the dataset and reference period and never to
 invent figures.
@@ -369,7 +371,7 @@ invent figures.
 
 | Domain | Datasets | Coverage |
 |---|---|---|
-| Companies | `dfp`, `itr`, `fre` (36 tables), `fca`, `vlmo` (insider trading), `cgvn` (governance) | DFP/ITR/FRE 2010+; FCA/VLMO/CGVN 2018+ |
+| Companies | `dfp`, `itr` (statements + filing index + pareceres + share composition), `fre` (36 tables), `fca`, `vlmo` (insider trading), `cgvn` (governance) | DFP/ITR/FRE 2010+; FCA/VLMO/CGVN 2018+ |
 | Funds | `fi_inf_diario`, `fi_cda`, `fi_cad`, `fii_inf_mensal`, `fidc_inf_mensal` (18 tables), `fiagro_inf_mensal` | FI daily 2021-01+; CDA 2023-01+; FII 2016+; FIDC 2025-01+; FIAGRO 2025-05+ |
 | Offerings | `oferta` (ICVM 400 / RCVM 160) | 1988+ |
 | Enforcement | `sancionador` (PAS) | current |
@@ -390,6 +392,7 @@ There are two layers.
 | Identity | `search_company`, `resolve`, `list_companies`, `get_tickers` |
 | Statements | `list_account_codes`, `get_financial_statements`, `get_account_history`, `get_statement_summary` |
 | Corporate filings | `list_fre_tables`, `get_fre_table`, `get_company_overview`, `get_shareholders`, `get_compensation`, `get_board`, `get_capital` |
+| Filings & notes | `get_dfp_document`, `get_dfp_notes`, `search_dfp_notes` |
 | Insiders & governance | `get_insider_trades`, `insider_summary`, `governance_practices`, `governance_score` |
 | Funds | `search_fund`, `get_fund_nav`, `get_fund_flows`, `get_fund_portfolio`, `get_fidc_report`, `rank_funds` |
 | Offerings | `search_offerings`, `issuance_volume`, `league_table` |
@@ -447,6 +450,7 @@ server behind a reverse proxy.
 ├── downloads/                     raw zips and CSVs, revalidated with If-Modified-Since
 │   └── <archive>.meta.json        remote Last-Modified/ETag + last revalidation time
 └── parquet/v1/<dataset>/<table>/period=<YYYY|YYYYMM|all>/data.parquet
+    └── doc_text/{pagina,nota}/<dfp|itr>/<year>-<cd_cvm>/data.parquet
 ```
 
 - Everything is lazy. The first call for a dataset downloads and parses the CVM
@@ -465,6 +469,15 @@ server behind a reverse proxy.
 
 - **DFP / ITR** keep CVM's uppercase column names. `VL_CONTA` is the raw value;
   `VL_CONTA_BRL` is already scaled by `ESCALA_MOEDA` and is the number to report.
+- **Notas explicativas** are not a CVM table. They are free text inside the full
+  filing, whose download link is `link_doc` in `dfp__documento` /
+  `itr__documento`. `get_dfp_notes` downloads that ZIP, extracts the PDF text and
+  indexes the numbered notes; `search_dfp_notes` searches every page. Treat the
+  note boundaries as best effort and cite the PDF page it returns.
+- **DFP/ITR extras**: `documento` (filing index with `link_doc`), `parecer`
+  (free text, off by default because it is ~15 MB per year) and
+  `composicao_capital`. `dra` (statement of comprehensive income) is available
+  as `dfp__dra_con/ind` and `itr__dra_con/ind`.
 - **FRE** keeps the GetFREData-compatible snake_case schema and key block
   (`cd_cvm`, `cnpj`, `nome_companhia`, `data_referencia`, `versao`,
   `id_documento`).
@@ -511,6 +524,7 @@ src/cvm_mcp/
 ├── normalize.py       Latin-1 reader, header cleaning, CNPJ, type inference
 ├── identity.py        CNPJ ↔ cd_cvm ↔ ticker resolution
 ├── schema_dfp.py      canonical DFP/ITR schema
+├── doc_text.py        filing PDF download, text extraction and note splitting
 ├── catalog_dfp.py     curated chart of accounts and roles
 ├── catalog_fre.py     the 36 FRE tables
 ├── fre_normalize.py   FRE normalization

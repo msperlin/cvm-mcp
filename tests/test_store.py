@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+import zipfile
 
 import httpx
+import pandas as pd
 import pytest
 
 from cvm_mcp import registry
@@ -65,6 +67,35 @@ def test_sanitize_rejects_dangerous_sql(sql):
 def test_literal_quotes_paths():
     assert _literal(["/a/b.parquet"]) == "['/a/b.parquet']"
     assert _literal(["a'b"]) == "['a''b']"
+
+
+def test_flat_dfp_member_bypasses_the_statement_schema(tmp_path):
+    """The filing index is plain CVM CSV: no doc/fmt columns, snake_case."""
+    store = make_store(tmp_path)
+    archive = tmp_path / "dfp_cia_aberta_2024.zip"
+    index = (
+        "CNPJ_CIA;DT_REFER;VERSAO;DENOM_CIA;CD_CVM;CATEG_DOC;ID_DOC;DT_RECEB;LINK_DOC\n"
+        "02.635.522/0001-95;2024-03-31;1;JALLES MACHADO S.A.;025496;DFP;159112;"
+        "2024-06-16;http://example.test/filing\n"
+    )
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("dfp_cia_aberta_2024.csv", index.encode("latin1"))
+
+    dataset = registry.get("dfp")
+    store._build(dataset, dataset.table("documento"), "2024", archive, False)
+
+    frame = pd.read_parquet(store.partition_file("dfp", "documento", "2024"))
+    assert "link_doc" in frame.columns
+    assert frame.loc[0, "link_doc"] == "http://example.test/filing"
+    assert frame.loc[0, "cnpj"] == "02635522000195"
+    assert "doc" not in frame.columns and "fmt" not in frame.columns
+    assert frame.loc[0, "_period"] == "2024"
+
+
+def test_dfp_parecer_table_is_optional(tmp_path):
+    spec = registry.get("dfp")
+    assert spec.table("parecer").default is False
+    assert spec.table("composicao_capital").default is True
 
 
 def test_query_without_cache_raises(tmp_path):

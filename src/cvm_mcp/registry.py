@@ -40,6 +40,13 @@ class Table:
     title: str = ""
     key_columns: tuple[str, ...] = ()
     cnpj_column: str | None = None
+    #: ``True`` for the ``DOC/fmt`` statement members that share the canonical
+    #: DFP schema.  Flat members (index, pareceres, composition) go through the
+    #: generic normalizer instead.
+    statement: bool = False
+    #: Whether ``load_dataset`` builds this table when no table is named.  Big
+    #: free-text members default to off and are loaded explicitly.
+    default: bool = True
 
     def member_name(self, *, period: str, doc: str | None = None, fmt: str | None = None) -> str:
         return self.member.format(period=period, year=period, doc=doc, fmt=fmt)
@@ -85,7 +92,7 @@ class Dataset:
 
 
 def _statement_tables(kind: str) -> tuple[Table, ...]:
-    docs = ("BPA", "BPP", "DRE", "DFC_MD", "DFC_MI", "DMPL", "DVA")
+    docs = ("BPA", "BPP", "DRE", "DFC_MD", "DFC_MI", "DMPL", "DRA", "DVA")
     formats = ("con", "ind")
     tables: list[Table] = []
     for doc in docs:
@@ -95,9 +102,43 @@ def _statement_tables(kind: str) -> tuple[Table, ...]:
                     slug=f"{doc.lower()}_{fmt}",
                     member=f"{kind}_cia_aberta_{doc}_{fmt}_{{period}}.csv",
                     title=f"{doc}/{fmt}",
+                    statement=True,
                 )
             )
     return tuple(tables)
+
+
+def _dfp_flat_tables(kind: str) -> tuple[Table, ...]:
+    """Non-statement members of the DFP/ITR archive.
+
+    ``documento`` is the index with the ``LINK_DOC`` of the full filing (the
+    only place the explanatory notes live), ``parecer`` holds the free-text
+    auditor/director statements, and ``composicao_capital`` the share counts.
+    """
+    return (
+        Table(
+            slug="documento",
+            member=f"{kind}_cia_aberta_{{period}}.csv",
+            title="Filing index and document links",
+            key_columns=("cnpj_cia", "cd_cvm"),
+            cnpj_column="cnpj_cia",
+        ),
+        Table(
+            slug="composicao_capital",
+            member=f"{kind}_cia_aberta_composicao_capital_{{period}}.csv",
+            title="Composição do capital",
+            key_columns=("cnpj_cia",),
+            cnpj_column="cnpj_cia",
+        ),
+        Table(
+            slug="parecer",
+            member=f"{kind}_cia_aberta_parecer_{{period}}.csv",
+            title="Pareceres e declarações (free text)",
+            key_columns=("cnpj_cia",),
+            cnpj_column="cnpj_cia",
+            default=False,
+        ),
+    )
 
 
 def _fre_tables() -> tuple[Table, ...]:
@@ -129,12 +170,14 @@ DATASETS: tuple[Dataset, ...] = (
         title="CVM/DFP — annual financial statements",
         description=(
             "Demonstrações Financeiras Padronizadas: BPA, BPP, DRE, DFC_MD, DFC_MI, "
-            "DMPL and DVA, consolidated and individual, 2010 onwards."
+            "DMPL, DRA and DVA, consolidated and individual, 2010 onwards, plus the "
+            "filing index with the download link of the full filing (where the "
+            "explanatory notes live) and the free-text pareceres."
         ),
         layout=Layout.STATEMENTS,
         normalizer=Normalizer.DFP,
         url="CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{period}.zip",
-        tables=_statement_tables("dfp"),
+        tables=_statement_tables("dfp") + _dfp_flat_tables("dfp"),
         min_period="2010",
         aliases=("financial_statements", "demonstrativos"),
     ),
@@ -142,11 +185,15 @@ DATASETS: tuple[Dataset, ...] = (
         id="itr",
         domain="companies",
         title="CVM/ITR — quarterly financial statements",
-        description="Formulário de Informações Trimestrais (year-to-date figures).",
+        description=(
+            "Formulário de Informações Trimestrais (year-to-date figures), plus the "
+            "filing index with the download link of the full filing and the "
+            "free-text pareceres."
+        ),
         layout=Layout.STATEMENTS,
         normalizer=Normalizer.DFP,
         url="CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_{period}.zip",
-        tables=_statement_tables("itr"),
+        tables=_statement_tables("itr") + _dfp_flat_tables("itr"),
         min_period="2010",
         aliases=("quarterly",),
     ),

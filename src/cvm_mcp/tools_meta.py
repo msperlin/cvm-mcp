@@ -201,6 +201,15 @@ async def load_dataset(
             )
         ),
     ] = None,
+    include_optional: Annotated[
+        bool,
+        Field(
+            description=(
+                "Also build the heavy optional tables (DFP/ITR `parecer`, which is "
+                "free text and ~15 MB per year)."
+            )
+        ),
+    ] = False,
 ) -> str:
     """Download and parse a dataset/period into the local cache.
 
@@ -209,6 +218,9 @@ async def load_dataset(
     missing. Call it before `run_query` so the SQL layer has the tables (and
     periods) it needs, and use `describe_dataset(detail=True)` for column
     meanings.
+
+    Heavy optional tables (`dfp`/`itr` ``parecer``) are skipped unless named in
+    ``table`` or ``include_optional`` is true.
     """
     try:
         spec = registry.get(dataset)
@@ -217,7 +229,11 @@ async def load_dataset(
         return error(exc.args[0] if exc.args else str(exc))
 
     requested = _period_request(period)
-    tables = [item.slug] if item else [table_spec.slug for table_spec in spec.tables]
+    tables = (
+        [item.slug]
+        if item
+        else [table_spec.slug for table_spec in spec.tables if table_spec.default or include_optional]
+    )
     if spec.period == "none":
         periods = [""]
     else:

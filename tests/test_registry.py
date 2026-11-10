@@ -110,9 +110,20 @@ def test_unknown_dataset_suggests_close_matches():
 
 
 def test_statement_tables_cover_every_document_and_format():
-    tables = registry.get("dfp").tables
-    assert len(tables) == 14
+    tables = [table for table in registry.get("dfp").tables if table.statement]
+    assert len(tables) == 16
     slugs = {table.slug for table in tables}
-    assert {"bpa_con", "bpp_ind", "dre_con", "dva_ind"} <= slugs
+    assert {"bpa_con", "bpp_ind", "dre_con", "dra_ind", "dva_ind"} <= slugs
     for table in tables:
-        assert re.fullmatch(r"(bpa|bpp|dre|dfc_md|dfc_mi|dmpl|dva)_(con|ind)", table.slug)
+        assert re.fullmatch(r"(bpa|bpp|dre|dfc_md|dfc_mi|dmpl|dra|dva)_(con|ind)", table.slug)
+
+
+def test_flat_statement_members_are_registered():
+    spec = registry.get("dfp")
+    flat = {table.slug: table for table in spec.tables if not table.statement}
+    assert set(flat) == {"documento", "parecer", "composicao_capital"}
+    assert flat["documento"].member_name(period="2024") == "dfp_cia_aberta_2024.csv"
+    assert flat["parecer"].member_name(period="2024") == "dfp_cia_aberta_parecer_2024.csv"
+    assert flat["parecer"].default is False
+    assert flat["documento"].default is True
+    assert flat["documento"].cnpj_column == "cnpj_cia"

@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-from cvm_mcp import tools_companies, tools_funds, tools_offerings
+from cvm_mcp import tools_companies, tools_documents, tools_funds, tools_offerings
 
 pytestmark = pytest.mark.network
 
@@ -109,6 +109,28 @@ def test_fiagro_nav():
     )
     assert "CVM/FIAGRO" in result
     assert "EXITUS" in result
+
+
+def test_dfp_document_and_notes_for_jalles():
+    document = asyncio.run(
+        tools_documents.get_dfp_document(cvm_codes=[25496], year=2026, data_type="dfp")
+    )
+    assert "rad.cvm.gov.br" in document
+    assert "JALLES" in document
+
+    listing = asyncio.run(
+        tools_documents.get_dfp_notes(cvm_code=25496, year=2026, data_type="dfp")
+    )
+    assert '"notes_indexed": true' in listing
+    assert "pages" in listing
+
+    search = asyncio.run(
+        tools_documents.search_dfp_notes(
+            term="arrendamento", cvm_codes=[25496], year=2026, limit=2, context=80
+        )
+    )
+    assert '"page":' in search
+    assert '"cd_cvm": 25496' in search
 
 
 def test_fund_family_routing_is_explicit():

@@ -30,6 +30,7 @@ DOC_TYPES: Final[tuple[str, ...]] = (
     "DFC_MD",
     "DFC_MI",
     "DMPL",
+    "DRA",
     "DVA",
 )
 DOC_FORMATS: Final[tuple[str, ...]] = ("con", "ind")
@@ -347,6 +348,7 @@ def doc_label(doc: str, fmt: str) -> str:
         "DFC_MD": "Fluxo de Caixa (metodo direto)",
         "DFC_MI": "Fluxo de Caixa (metodo indireto)",
         "DMPL": "Mutacoes do Patrimonio Liquido",
+        "DRA": "Demonstracao do Resultado Abrangente",
         "DVA": "Demonstracao do Valor Adicionado",
     }
     base = labels.get(doc, doc)

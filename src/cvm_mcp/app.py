@@ -32,6 +32,9 @@ How to work with this server:
 Important:
 - DFP/ITR values: `VL_CONTA` is raw, `VL_CONTA_BRL` is already scaled by
   ESCALA_MOEDA (thousands) and is the number to report.
+- Notas explicativas are free text inside the full filing, not a CVM table:
+  `get_dfp_notes` / `search_dfp_notes` download and read the filing PDF linked
+  from `dfp__documento.link_doc`. Cite the PDF page they return.
 - FRE and the newer datasets use snake_case columns; DFP/ITR keep CVM's
   uppercase names for compatibility with the standalone servers.
 - Data is cached locally on first use; the first call for a period downloads

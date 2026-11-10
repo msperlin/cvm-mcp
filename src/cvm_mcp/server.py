@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from . import tools_companies, tools_funds, tools_meta, tools_offerings  # noqa: F401
+from . import tools_companies, tools_documents, tools_funds, tools_meta, tools_offerings  # noqa: F401
 from .app import mcp
 
 
@@ -27,6 +27,8 @@ Steps:
 4. `get_shareholders`, `get_board`, `get_compensation` for ownership and pay.
 5. `governance_score` for the ICBGC adoption rate.
 6. `get_insider_trades` for recent insider activity.
+7. `get_dfp_notes` (or `search_dfp_notes`) when the answer depends on the
+   explanatory notes; report the PDF page, since the notes are free text.
 State the reference period and cite the dataset (CVM/DFP, CVM/FRE, CVM/VLMO).
 Do not invent numbers: every figure must come from a tool result.
 """

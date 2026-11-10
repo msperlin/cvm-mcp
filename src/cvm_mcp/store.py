@@ -235,7 +235,10 @@ class Store:
         if target.exists() and not force and target.stat().st_mtime >= archive.stat().st_mtime:
             return target
 
-        if dataset.domain == "companies" and dataset.normalizer is registry.Normalizer.GENERIC:
+        if dataset.domain == "companies" and (
+            dataset.normalizer is registry.Normalizer.GENERIC
+            or (not item.statement and item.cnpj_column)
+        ):
             # cd_cvm is attached at build time, so the registry must exist first.
             await self._ensure_registry()
 
@@ -308,7 +311,7 @@ class Store:
         member = item.member_name(period=period)
         payload = _read_member(archive, member)
 
-        if dataset.normalizer is registry.Normalizer.DFP:
+        if dataset.normalizer is registry.Normalizer.DFP and item.statement:
             frame = schema_dfp.read_statement_csv(io.BytesIO(payload), clean=True)
             table = pa.Table.from_pandas(frame, schema=schema_dfp.ARROW_SCHEMA, preserve_index=False)
             doc, _, fmt = item.title.partition("/")
@@ -378,7 +381,10 @@ class Store:
     ) -> dict[str, str]:
         """Force a rebuild of cached partitions."""
         dataset = registry.get(dataset_id)
-        tables = [table] if table else [item.slug for item in dataset.tables]
+        tables = [table] if table else (
+            self.cached_tables(dataset_id)
+            or [item.slug for item in dataset.tables if item.default]
+        )
         periods = (
             [period]
             if period is not None
@@ -559,6 +565,27 @@ class Store:
             datasets[dataset.id] = {
                 "tables": tables,
                 "periods": periods,
+                "partitions": files,
+                "bytes": size,
+            }
+        text_root = self.parquet_root / "doc_text"
+        if text_root.exists():
+            documents = sorted(
+                {
+                    path.parent.name
+                    for path in text_root.rglob("data.parquet")
+                }
+            )
+            size = sum(path.stat().st_size for path in text_root.rglob("*.parquet"))
+            files = sum(1 for _ in text_root.rglob("*.parquet"))
+            total_bytes += size
+            total_files += files
+            datasets["doc_text"] = {
+                "tables": sorted(
+                    {path.parent.parent.parent.name for path in text_root.rglob("data.parquet")}
+                ),
+                "periods": [],
+                "documents": documents,
                 "partitions": files,
                 "bytes": size,
             }
