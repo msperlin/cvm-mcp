@@ -48,12 +48,13 @@ class Table:
     #: free-text members default to off and are loaded explicitly.
     default: bool = True
     #: Older names of this member, tried when ``member`` is absent from the
-    #: archive (CVM renamed ``cda_fie`` from ``cda_fiim`` in Dec/2023).
+    #: archive (CVM renamed ``cda_fie`` from ``cda_fiim`` in Feb/2024).
     alternate_members: tuple[str, ...] = ()
     #: ``(old_header, current_header)`` pairs applied after snake-casing.
-    #: CVM renamed the fund columns in Dec/2023 (RCVM 175) in place, so the
-    #: store maps the old headers onto the current schema to keep one physical
-    #: layout across periods.  When a file carries both names, the new wins.
+    #: CVM renamed fund columns in place more than once (FII in Jan/2021,
+    #: FI daily and CDA in Dec/2023 with RCVM 175), so the store maps the old
+    #: headers onto the current schema to keep one physical layout across
+    #: periods.  When a file carries both names, the new wins.
     column_aliases: tuple[tuple[str, str], ...] = ()
 
     def member_name(self, *, period: str, doc: str | None = None, fmt: str | None = None) -> str:
@@ -181,13 +182,15 @@ def _fre_tables() -> tuple[Table, ...]:
 #: RCVM 175 renamed the fund identifiers in Dec/2023 without changing the
 #: archive names: ``CNPJ_FUNDO`` -> ``CNPJ_FUNDO_CLASSE`` and
 #: ``TP_FUNDO`` -> ``TP_FUNDO_CLASSE`` (plus the new ``ID_SUBCLASSE``).
+#: Verified against every published archive of the FI daily and CDA datasets.
 _FUND_COLUMN_ALIASES: tuple[tuple[str, str], ...] = (
     ("tp_fundo", "tp_fundo_classe"),
     ("cnpj_fundo", "cnpj_fundo_classe"),
 )
 
-#: The FII monthly report used the same pre-RCVM-175 names, with ``Nome_Fundo``
-#: instead of ``Nome_Fundo_Classe``.
+#: The FII monthly report carried the same old names from 2016 until Dec/2020,
+#: with ``Nome_Fundo`` instead of ``Nome_Fundo_Classe`` (it changed in
+#: Jan/2021, before RCVM 175).
 _FII_COLUMN_ALIASES: tuple[tuple[str, str], ...] = (
     ("cnpj_fundo", "cnpj_fundo_classe"),
     ("nome_fundo", "nome_fundo_classe"),
