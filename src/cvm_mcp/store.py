@@ -569,8 +569,12 @@ class Store:
         connection = duckdb.connect(":memory:")
         try:
             for name, files in views.items():
+                # Column sets drift across periods (RCVM 175 added
+                # ID_SUBCLASSE, FII gained new components): union by name so a
+                # late column is not silently dropped and older rows get NULL.
                 connection.execute(
-                    f'CREATE VIEW "{name}" AS SELECT * FROM read_parquet({_literal(files)})'
+                    f'CREATE VIEW "{name}" AS SELECT * FROM read_parquet('
+                    f"{_literal(files)}, union_by_name = true)"
                 )
             wrapped = f"SELECT * FROM ({statement}) AS _q LIMIT {int(limit) + 1}"
             frame = connection.execute(wrapped).fetch_df()

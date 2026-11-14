@@ -154,6 +154,32 @@ def test_dfp_parecer_table_is_optional(tmp_path):
     assert spec.table("composicao_capital").default is True
 
 
+def test_query_unions_columns_from_different_periods(tmp_path):
+    """A column introduced mid-series must not be dropped by the view."""
+    store = make_store(tmp_path)
+    old = store.partition_file("fi_inf_diario", "informe", "202311")
+    new = store.partition_file("fi_inf_diario", "informe", "202312")
+    for path in (old, new):
+        path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {"cnpj": ["a"], "dt_comptc": ["2023-11-30"], "_period": ["202311"]}
+    ).to_parquet(old)
+    pd.DataFrame(
+        {
+            "cnpj": ["a"],
+            "dt_comptc": ["2023-12-01"],
+            "id_subclasse": ["1"],
+            "_period": ["202312"],
+        }
+    ).to_parquet(new)
+
+    frame = store.query(
+        "SELECT _period, id_subclasse FROM fi_inf_diario__informe ORDER BY _period"
+    )
+    assert frame["id_subclasse"].tolist()[0] is None or pd.isna(frame["id_subclasse"][0])
+    assert frame["id_subclasse"].tolist()[1] == "1"
+
+
 def test_query_without_cache_raises(tmp_path):
     store = make_store(tmp_path)
     with pytest.raises(Exception) as excinfo:
