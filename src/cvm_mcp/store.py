@@ -26,6 +26,7 @@ from typing import Any
 import duckdb
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 
 from . import fre_normalize, normalize, registry, schema_dfp
 from .fetch import Client, PeriodNotFound
@@ -232,7 +233,12 @@ class Store:
         target = self.partition_file(dataset.id, item.slug, period)
 
         archive = await self._archive(dataset, period)
-        if target.exists() and not force and target.stat().st_mtime >= archive.stat().st_mtime:
+        if (
+            target.exists()
+            and self._schema_is_current(item, target)
+            and not force
+            and target.stat().st_mtime >= archive.stat().st_mtime
+        ):
             return target
 
         if dataset.domain == "companies" and (
@@ -243,10 +249,31 @@ class Store:
             await self._ensure_registry()
 
         async with self._lock(f"{dataset.id}|{item.slug}|{period}"):
-            if target.exists() and not force and target.stat().st_mtime >= archive.stat().st_mtime:
+            if (
+                target.exists()
+                and self._schema_is_current(item, target)
+                and not force
+                and target.stat().st_mtime >= archive.stat().st_mtime
+            ):
                 return target
             await asyncio.to_thread(self._build, dataset, item, period, archive, force)
         return target
+
+    @staticmethod
+    def _schema_is_current(item: registry.Table, target: Path) -> bool:
+        """False when a cached partition still carries a pre-rename header.
+
+        Partitions built before the RCVM-175 aliases existed keep the old
+        column names even though the archive did not change; rebuild them on
+        first use instead of forcing a full cache wipe.
+        """
+        if not item.column_aliases:
+            return True
+        try:
+            columns = set(pq.read_schema(target).names)
+        except Exception:  # noqa: BLE001 - an unreadable file is rebuilt anyway
+            return True
+        return not any(old in columns for old, _ in item.column_aliases)
 
     async def ensure_period(
         self,
@@ -309,7 +336,15 @@ class Store:
         force: bool,
     ) -> None:
         member = item.member_name(period=period)
-        payload = _read_member(archive, member)
+        payload = None
+        for name in item.member_names(period=period):
+            try:
+                payload = _read_member(archive, name)
+            except NoData:
+                continue
+            break
+        if payload is None:
+            raise NoData(f"{archive.name}: {member} not found inside the archive")
 
         if dataset.normalizer is registry.Normalizer.DFP and item.statement:
             frame = schema_dfp.read_statement_csv(io.BytesIO(payload), clean=True)
@@ -333,10 +368,12 @@ class Store:
             self._write(dataset.id, item.slug, period, frame)
             return
 
-        frame = normalize.canonicalize(
-            normalize.read_csv_bytes(payload, sep=dataset.sep, encoding=dataset.encoding),
-            key_columns=item.key_columns,
-        )
+        frame = normalize.read_csv_bytes(payload, sep=dataset.sep, encoding=dataset.encoding)
+        if item.column_aliases:
+            # Map pre-RCVM-175 headers before canonicalize() orders the keys.
+            frame.columns = normalize.clean_names(frame.columns)
+            frame = normalize.apply_aliases(frame, item.column_aliases)
+        frame = normalize.canonicalize(frame, key_columns=item.key_columns)
         if dataset.domain == "companies" and item.cnpj_column and "cd_cvm" not in frame.columns:
             company = self._registry_sync()
             if not company.empty:

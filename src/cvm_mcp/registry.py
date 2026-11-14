@@ -47,9 +47,25 @@ class Table:
     #: Whether ``load_dataset`` builds this table when no table is named.  Big
     #: free-text members default to off and are loaded explicitly.
     default: bool = True
+    #: Older names of this member, tried when ``member`` is absent from the
+    #: archive (CVM renamed ``cda_fie`` from ``cda_fiim`` in Dec/2023).
+    alternate_members: tuple[str, ...] = ()
+    #: ``(old_header, current_header)`` pairs applied after snake-casing.
+    #: CVM renamed the fund columns in Dec/2023 (RCVM 175) in place, so the
+    #: store maps the old headers onto the current schema to keep one physical
+    #: layout across periods.  When a file carries both names, the new wins.
+    column_aliases: tuple[tuple[str, str], ...] = ()
 
     def member_name(self, *, period: str, doc: str | None = None, fmt: str | None = None) -> str:
         return self.member.format(period=period, year=period, doc=doc, fmt=fmt)
+
+    def member_names(self, *, period: str) -> tuple[str, ...]:
+        """The current member name followed by its pre-rename alternatives."""
+        names = [self.member_name(period=period)]
+        names.extend(
+            member.format(period=period, year=period) for member in self.alternate_members
+        )
+        return tuple(names)
 
 
 @dataclass(frozen=True)
@@ -160,6 +176,28 @@ def _fre_tables() -> tuple[Table, ...]:
             )
         )
     return tuple(tables)
+
+
+#: RCVM 175 renamed the fund identifiers in Dec/2023 without changing the
+#: archive names: ``CNPJ_FUNDO`` -> ``CNPJ_FUNDO_CLASSE`` and
+#: ``TP_FUNDO`` -> ``TP_FUNDO_CLASSE`` (plus the new ``ID_SUBCLASSE``).
+_FUND_COLUMN_ALIASES: tuple[tuple[str, str], ...] = (
+    ("tp_fundo", "tp_fundo_classe"),
+    ("cnpj_fundo", "cnpj_fundo_classe"),
+)
+
+#: The FII monthly report used the same pre-RCVM-175 names, with ``Nome_Fundo``
+#: instead of ``Nome_Fundo_Classe``.
+_FII_COLUMN_ALIASES: tuple[tuple[str, str], ...] = (
+    ("cnpj_fundo", "cnpj_fundo_classe"),
+    ("nome_fundo", "nome_fundo_classe"),
+)
+
+#: Block 2 (fund quotas) also renamed the quota issuer's CNPJ and name.
+_CDA_BLC2_ALIASES: tuple[tuple[str, str], ...] = (
+    ("cnpj_fundo_cota", "cnpj_fundo_classe_cota"),
+    ("nm_fundo_cota", "nm_fundo_classe_subclasse_cota"),
+)
 
 
 DATASETS: tuple[Dataset, ...] = (
@@ -299,7 +337,9 @@ DATASETS: tuple[Dataset, ...] = (
         title="CVM/FI — Informe Diário",
         description=(
             "Daily net asset value, quota price, redemptions, subscriptions and "
-            "number of unitholders for every investment fund. 2021 onwards."
+            "number of unitholders for every investment fund. 2021 onwards; "
+            "months before 2023-12 use the pre-RCVM-175 headers, normalized here "
+            "to the current column names."
         ),
         layout=Layout.MONTHLY_TABLES,
         normalizer=Normalizer.GENERIC,
@@ -311,6 +351,7 @@ DATASETS: tuple[Dataset, ...] = (
                 title="Daily fund report",
                 key_columns=("cnpj_fundo_classe", "dt_comptc"),
                 cnpj_column="cnpj_fundo_classe",
+                column_aliases=_FUND_COLUMN_ALIASES,
             ),
         ),
         period="month",
@@ -329,13 +370,40 @@ DATASETS: tuple[Dataset, ...] = (
         normalizer=Normalizer.GENERIC,
         url="FI/DOC/CDA/DADOS/cda_fi_{period}.zip",
         tables=(
-            Table("pl", "cda_fi_PL_{period}.csv", "Net asset value", ("cnpj_fundo_classe",), "cnpj_fundo_classe"),
+            Table(
+                "pl",
+                "cda_fi_PL_{period}.csv",
+                "Net asset value",
+                ("cnpj_fundo_classe",),
+                "cnpj_fundo_classe",
+                column_aliases=_FUND_COLUMN_ALIASES,
+            ),
             Table(
                 "fie",
                 "cda_fie_{period}.csv",
                 "Structured-fund portfolio (FII, FIDC, FIAGRO, FIP)",
                 ("cnpj_fundo_classe",),
                 "cnpj_fundo_classe",
+                alternate_members=("cda_fiim_{period}.csv",),
+                column_aliases=_FUND_COLUMN_ALIASES,
+            ),
+            # New in 2026: holdings kept confidential, aggregated by
+            # application type.  Optional because older archives lack them.
+            Table(
+                "confidencial",
+                "cda_fi_CONFID_{period}.csv",
+                "Confidential holdings, aggregated by application type",
+                ("cnpj_fundo_classe",),
+                "cnpj_fundo_classe",
+                default=False,
+            ),
+            Table(
+                "fie_confidencial",
+                "cda_fie_CONFID_{period}.csv",
+                "Confidential structured-fund holdings, aggregated by application type",
+                ("cnpj_fundo_classe",),
+                "cnpj_fundo_classe",
+                default=False,
             ),
             *tuple(
                 Table(
@@ -344,6 +412,11 @@ DATASETS: tuple[Dataset, ...] = (
                     f"Portfolio block {index}",
                     ("cnpj_fundo_classe",),
                     "cnpj_fundo_classe",
+                    column_aliases=(
+                        _FUND_COLUMN_ALIASES + _CDA_BLC2_ALIASES
+                        if index == 2
+                        else _FUND_COLUMN_ALIASES
+                    ),
                 )
                 for index in range(1, 9)
             ),
@@ -395,6 +468,7 @@ DATASETS: tuple[Dataset, ...] = (
                 "Identity, segment and mandate",
                 ("cnpj_fundo_classe", "data_referencia"),
                 "cnpj_fundo_classe",
+                column_aliases=_FII_COLUMN_ALIASES,
             ),
             Table(
                 "ativo_passivo",
@@ -402,6 +476,7 @@ DATASETS: tuple[Dataset, ...] = (
                 "Balance-sheet composition (properties, CRI, FII quotas, cash...)",
                 ("cnpj_fundo_classe", "data_referencia"),
                 "cnpj_fundo_classe",
+                column_aliases=_FII_COLUMN_ALIASES,
             ),
             Table(
                 "complemento",
@@ -409,6 +484,7 @@ DATASETS: tuple[Dataset, ...] = (
                 "Unitholders, NAV, returns, dividend yield and fees",
                 ("cnpj_fundo_classe", "data_referencia"),
                 "cnpj_fundo_classe",
+                column_aliases=_FII_COLUMN_ALIASES,
             ),
         ),
         period="year",

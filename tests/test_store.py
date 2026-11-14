@@ -92,6 +92,62 @@ def test_flat_dfp_member_bypasses_the_statement_schema(tmp_path):
     assert frame.loc[0, "_period"] == "2024"
 
 
+def test_pre_rcvm_175_daily_report_is_readable(tmp_path):
+    """2021-01..2023-11 files use CNPJ_FUNDO/TP_FUNDO; they must land on the
+    current schema so the same query works across the 2023-12 rename."""
+    store = make_store(tmp_path)
+    archive = tmp_path / "inf_diario_fi_202311.zip"
+    body = (
+        "TP_FUNDO;CNPJ_FUNDO;DT_COMPTC;VL_TOTAL;VL_QUOTA;VL_PATRIM_LIQ;"
+        "CAPTC_DIA;RESG_DIA;NR_COTST\n"
+        "FI;07593972000186;2023-11-30;1000.00;1.234567;900.00;10.00;5.00;42\n"
+    )
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("inf_diario_fi_202311.csv", body.encode("latin1"))
+
+    dataset = registry.get("fi_inf_diario")
+    store._build(dataset, dataset.table("informe"), "202311", archive, False)
+
+    frame = pd.read_parquet(store.partition_file("fi_inf_diario", "informe", "202311"))
+    assert "cnpj_fundo_classe" in frame.columns
+    assert "tp_fundo_classe" in frame.columns
+    assert "cnpj_fundo" not in frame.columns
+    assert frame.loc[0, "cnpj"] == "07593972000186"
+    assert frame.loc[0, "tp_fundo_classe"] == "FI"
+
+
+def test_partition_built_with_pre_rename_headers_is_not_reused(tmp_path):
+    store = make_store(tmp_path)
+    item = registry.get("fi_inf_diario").table("informe")
+    path = store.partition_file("fi_inf_diario", "informe", "202311")
+    path.parent.mkdir(parents=True)
+
+    pd.DataFrame({"cnpj_fundo": ["x"], "tp_fundo": ["FI"]}).to_parquet(path)
+    assert store._schema_is_current(item, path) is False
+
+    pd.DataFrame({"cnpj_fundo_classe": ["x"], "tp_fundo_classe": ["FI"]}).to_parquet(path)
+    assert store._schema_is_current(item, path) is True
+
+
+def test_cda_structured_portfolio_falls_back_to_the_fiim_member(tmp_path):
+    """Archives before 2023-12 carry cda_fiim_<period>.csv, not cda_fie."""
+    store = make_store(tmp_path)
+    archive = tmp_path / "cda_fi_202306.zip"
+    body = (
+        "TP_FUNDO;CNPJ_FUNDO;DENOM_SOCIAL;DT_COMPTC;VL_PATRIM_LIQ\n"
+        "FII;12345678000199;FUNDO TESTE;2023-06-30;500.00\n"
+    )
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("cda_fiim_202306.csv", body.encode("latin1"))
+
+    dataset = registry.get("fi_cda")
+    store._build(dataset, dataset.table("fie"), "202306", archive, False)
+
+    frame = pd.read_parquet(store.partition_file("fi_cda", "fie", "202306"))
+    assert frame.loc[0, "cnpj"] == "12345678000199"
+    assert frame.loc[0, "tp_fundo_classe"] == "FII"
+
+
 def test_dfp_parecer_table_is_optional(tmp_path):
     spec = registry.get("dfp")
     assert spec.table("parecer").default is False

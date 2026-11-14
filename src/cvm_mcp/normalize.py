@@ -164,6 +164,31 @@ def canonicalize(
     return frame.loc[:, ordered].reset_index(drop=True)
 
 
+def apply_aliases(
+    frame: pd.DataFrame,
+    aliases: Iterable[tuple[str, str]],
+) -> pd.DataFrame:
+    """Rename old CVM headers onto the names used by the current layout.
+
+    CVM renamed the fund columns in Dec/2023 (RCVM 175) in the same archives, so
+    periods before and after the change would otherwise have different physical
+    schemas. Renaming here keeps one table per dataset/table. When a file
+    carries both the old and the new name, the new one is kept.
+    """
+    pairs = [(old, new) for old, new in aliases if old in frame.columns]
+    if not pairs:
+        return frame
+
+    frame = frame.copy()
+    keep_new = [old for old, new in pairs if new in frame.columns]
+    renames = {old: new for old, new in pairs if new not in frame.columns}
+    if keep_new:
+        frame = frame.drop(columns=keep_new)
+    if renames:
+        frame = frame.rename(columns=renames)
+    return frame
+
+
 def attach_cd_cvm(
     detail: pd.DataFrame,
     registry: pd.DataFrame,

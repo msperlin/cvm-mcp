@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from cvm_mcp.normalize import (
+    apply_aliases,
     canonicalize,
     clean_names,
     cnpj_series,
@@ -21,6 +22,29 @@ def test_clean_names():
         "vl_conta",
     ]
     assert clean_names(["a  b", "a__b"]) == ["a_b", "a_b"]
+
+
+def test_apply_aliases_maps_the_pre_rcvm_175_headers():
+    frame = pd.DataFrame(
+        {"TP_FUNDO": ["FI"], "CNPJ_FUNDO": ["07593972000186"], "VL_QUOTA": [1.0]}
+    )
+    frame.columns = clean_names(frame.columns)
+    result = apply_aliases(
+        frame,
+        (("tp_fundo", "tp_fundo_classe"), ("cnpj_fundo", "cnpj_fundo_classe")),
+    )
+    assert list(result.columns) == ["tp_fundo_classe", "cnpj_fundo_classe", "vl_quota"]
+    assert result.loc[0, "cnpj_fundo_classe"] == "07593972000186"
+
+
+def test_apply_aliases_prefers_the_new_header_when_both_exist():
+    frame = pd.DataFrame(
+        {"CNPJ_FUNDO": ["old"], "CNPJ_FUNDO_CLASSE": ["new"], "VL_QUOTA": [1.0]}
+    )
+    frame.columns = clean_names(frame.columns)
+    result = apply_aliases(frame, (("cnpj_fundo", "cnpj_fundo_classe"),))
+    assert list(result.columns) == ["cnpj_fundo_classe", "vl_quota"]
+    assert result.loc[0, "cnpj_fundo_classe"] == "new"
 
 
 def test_fold_is_accent_insensitive():

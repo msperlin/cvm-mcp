@@ -373,6 +373,12 @@ invent figures.
 |---|---|---|
 | Companies | `dfp`, `itr` (statements + filing index + pareceres + share composition), `fre` (36 tables), `fca`, `vlmo` (insider trading), `cgvn` (governance) | DFP/ITR/FRE 2010+; FCA/VLMO/CGVN 2018+ |
 | Funds | `fi_inf_diario`, `fi_cda`, `fi_cad`, `fii_inf_mensal`, `fidc_inf_mensal` (18 tables), `fiagro_inf_mensal` | FI daily 2021-01+; CDA 2023-01+; FII 2016+; FIDC 2025-01+; FIAGRO 2025-05+ |
+
+RCVM 175 renamed the fund columns in Dec/2023 (`CNPJ_FUNDO` →
+`CNPJ_FUNDO_CLASSE`, `TP_FUNDO` → `TP_FUNDO_CLASSE`, new `ID_SUBCLASSE`), and
+the CDA structured portfolio moved from `cda_fiim_*` to `cda_fie_*`. The server
+maps the old headers onto the current schema at load time, so a query spanning
+2023-11 and 2023-12 sees one layout.
 | Offerings | `oferta` (ICVM 400 / RCVM 160) | 1988+ |
 | Enforcement | `sancionador` (PAS) | current |
 | Registry | `cad_cia_aberta` | current |
